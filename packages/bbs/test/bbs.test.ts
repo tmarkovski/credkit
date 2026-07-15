@@ -27,17 +27,25 @@ import {
   blindProofVerify,
   blindSign,
   blindVerify,
+  calculateRandomScalars,
   commit,
+  createGeneratorPoints,
   createGenerators,
   getCiphersuite,
   keyGen,
+  messagesToScalars,
   mockRandomScalars,
   mockedCalculateRandomScalars,
   octetsToProof,
   octetsToSignature,
+  proofChallenge,
+  proofFinalize,
   proofGen,
+  proofInit,
   proofToOctets,
   proofVerify,
+  proofVerifyFinalize,
+  proofVerifyInit,
   sign,
   signatureToOctets,
   skToPk,
@@ -45,6 +53,8 @@ import {
   verifyCommitment,
   type MessageDisclosure,
   type ProofGenTrace,
+  type ProofInitParts,
+  type RandomScalars,
   type SignTrace,
 } from "../src/index.js";
 
@@ -540,6 +550,134 @@ describe.each(FIXTURE_DIRS)("%s", (dir: FixtureDir) => {
         identity[0] = 0xc0;
         expect(() => octetsToProof(suite, identity)).toThrow(/identity|Abar/);
       });
+    });
+  });
+
+  describe("three-phase proof API — the packages/proofs seam", () => {
+    const enc = (s: string) => new TextEncoder().encode(s);
+
+    /** The combined generator vector + scalar list that `proofGen` builds internally. */
+    const combinedFor = (msgs: Uint8Array[]) => {
+      const apiId = suite.blindApiId;
+      const combined = [
+        ...createGeneratorPoints(suite, msgs.length + 1, apiId),
+        ...createGeneratorPoints(suite, 1, `BLIND_${apiId}`),
+      ];
+      const scalars = [...messagesToScalars(suite, msgs, apiId), 0n]; // zero prover blind
+      return { apiId, combined, scalars };
+    };
+
+    /** Deterministic, nonzero — both paths must draw identical scalars to compare bytes. */
+    const stub: RandomScalars = (count) =>
+      Array.from({ length: count }, (_, i) => BigInt(i) + 7n);
+
+    it("proofInit + proofChallenge + proofFinalize is byte-identical to proofGen", () => {
+      const { secretKey: sk, publicKey: pk } = keyGen(suite, new Uint8Array(32).fill(11));
+      const msgs = [enc("m0"), enc("m1"), enc("m2")];
+      const header = enc("head");
+      const ph = enc("ph");
+      const sig = sign(suite, sk, pk, header, msgs);
+      const viaMonolith = proofGen(suite, pk, sig, header, ph, msgs, [1], {
+        randomScalars: stub,
+      });
+
+      const { apiId, combined, scalars } = combinedFor(msgs);
+      const state = proofInit(suite, pk, sig, combined, header, scalars, [1], apiId, stub);
+      const challenge = proofChallenge(suite, state, ph, apiId);
+      const viaSplit = proofFinalize(state, challenge);
+
+      expect(bytesToHex(proofToOctets(suite, viaSplit))).toBe(
+        bytesToHex(proofToOctets(suite, viaMonolith)),
+      );
+    });
+
+    it("proofVerifyInit + proofChallenge + proofVerifyFinalize accepts, and only under the right transcript", () => {
+      const { secretKey: sk, publicKey: pk } = keyGen(suite, new Uint8Array(32).fill(13));
+      const msgs = [enc("m0"), enc("m1"), enc("m2")];
+      const header = enc("head");
+      const ph = enc("ph");
+      const sig = sign(suite, sk, pk, header, msgs);
+      const proof = proofGen(suite, pk, sig, header, ph, msgs, [1]);
+
+      const { apiId, combined, scalars } = combinedFor(msgs);
+      const disclosed = new Map([[1, scalars[1]!]]);
+      const init = proofVerifyInit(suite, pk, proof, combined, header, disclosed, apiId);
+      expect(proofChallenge(suite, init, ph, apiId)).toBe(proof.challenge);
+      expect(proofVerifyFinalize(pk, init)).toBe(true);
+      // A different transcript (here: another ph) must not reproduce the challenge.
+      expect(proofChallenge(suite, init, enc("other"), apiId)).not.toBe(proof.challenge);
+    });
+
+    it("proves witness equality across two statements via shared blinding + one merged challenge", () => {
+      // Two issuers, two credentials, one hidden link secret: at message index 0 of
+      // credential A and index 1 of credential B. The presentation must show both proofs
+      // commit to the same hidden value without revealing it.
+      const issuerA = keyGen(suite, new Uint8Array(32).fill(17));
+      const issuerB = keyGen(suite, new Uint8Array(32).fill(19));
+      const linkSecret = enc("link-secret");
+      const msgsA = [linkSecret, enc("a1"), enc("a2")];
+      const msgsB = [enc("b0"), linkSecret];
+      const header = enc("head");
+      const sigA = sign(suite, issuerA.secretKey, issuerA.publicKey, header, msgsA);
+      const sigB = sign(suite, issuerB.secretKey, issuerB.publicKey, header, msgsB);
+
+      // A hides message 0, B hides message 1 — in both statements the link secret is the
+      // FIRST undisclosed index, i.e. mTilde position 5 of the random-scalar draw. Only that
+      // position is shared; every other scalar stays independent per statement.
+      const sharedTilde = calculateRandomScalars(suite, 1)[0]!;
+      const withShared: RandomScalars = (count) => {
+        const rs = calculateRandomScalars(suite, count);
+        rs[5] = sharedTilde;
+        return rs;
+      };
+
+      const A = combinedFor(msgsA);
+      const B = combinedFor(msgsB);
+      const stateA = proofInit(suite, issuerA.publicKey, sigA, A.combined, header, A.scalars, [1, 2], A.apiId, withShared);
+      const stateB = proofInit(suite, issuerB.publicKey, sigB, B.combined, header, B.scalars, [0], B.apiId, withShared);
+
+      // Merged Fiat–Shamir challenge over BOTH statements' init parts. This transcript is
+      // TEST-LOCAL — packages/proofs owns the real labeled, length-prefixed one. What the
+      // core API must guarantee: any challenge derived from all ProofInitParts works.
+      const partsHex = (init: ProofInitParts) =>
+        [init.Abar, init.Bbar, init.D, init.T1, init.T2]
+          .map((p) => bytesToHex(p.toBytes()))
+          .join("") + scalarHex(init.domain);
+      const mergedChallenge = suite.hashToScalar(
+        hexToBytes(partsHex(stateA) + partsHex(stateB)),
+        enc("TEST_MERGED_CHALLENGE_DST_"),
+      );
+
+      const proofA = proofFinalize(stateA, mergedChallenge);
+      const proofB = proofFinalize(stateB, mergedChallenge);
+
+      // Same blinding + same challenge + same witness => identical response scalars. That
+      // equality IS the verifier's linkage check. (Undisclosed sets are [0, blind] for A and
+      // [1, blind] for B, so the link secret is commitments[0] in both.)
+      expect(proofA.commitments[0]).toBe(proofB.commitments[0]);
+      expect(proofA.commitments[1]).not.toBe(proofB.commitments[1]);
+      expect(proofA.messageBlindings?.get(0)).toBe(sharedTilde);
+      expect(proofB.messageBlindings?.get(1)).toBe(sharedTilde);
+
+      // A different witness under the SAME blinding and challenge must not collide.
+      const msgsC = [enc("b0"), enc("not-the-link-secret")];
+      const sigC = sign(suite, issuerB.secretKey, issuerB.publicKey, header, msgsC);
+      const C = combinedFor(msgsC);
+      const stateC = proofInit(suite, issuerB.publicKey, sigC, C.combined, header, C.scalars, [0], C.apiId, withShared);
+      const proofC = proofFinalize(stateC, mergedChallenge);
+      expect(proofC.commitments[0]).not.toBe(proofA.commitments[0]);
+
+      // Verify side: recompute each statement's init parts from the proofs, re-derive the
+      // merged challenge, and pairing-check each statement.
+      const initA = proofVerifyInit(suite, issuerA.publicKey, proofA, A.combined, header, new Map([[1, A.scalars[1]!], [2, A.scalars[2]!]]), A.apiId);
+      const initB = proofVerifyInit(suite, issuerB.publicKey, proofB, B.combined, header, new Map([[0, B.scalars[0]!]]), B.apiId);
+      const remerged = suite.hashToScalar(
+        hexToBytes(partsHex(initA) + partsHex(initB)),
+        enc("TEST_MERGED_CHALLENGE_DST_"),
+      );
+      expect(remerged).toBe(mergedChallenge);
+      expect(proofVerifyFinalize(issuerA.publicKey, initA)).toBe(true);
+      expect(proofVerifyFinalize(issuerB.publicKey, initB)).toBe(true);
     });
   });
 

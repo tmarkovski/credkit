@@ -30,6 +30,13 @@ implementation pass discovered (including two upstream fixture defects in the SH
 - `Proof.messageBlindings` surfaces each hidden message's Schnorr blinding (keyed by message
   index) for `packages/proofs` to share across statements — the link-secret mechanic. It is
   never serialized; `proofToOctets` carries only the wire fields.
+- The proof operations are also exposed as **three phases** — `proofInit` / `proofChallenge` /
+  `proofFinalize` and `proofVerifyInit` / `proofVerifyFinalize` — so `packages/proofs` can
+  compute ONE merged Fiat–Shamir challenge over several statements' `ProofInitParts`.
+  `coreProofGen`/`coreProofVerify` are just the single-statement compositions. Sharing a
+  blinding under two *different* challenges leaks the witness
+  (`m^₁ − m^₂ = (c₁ − c₂)·m`); the merged challenge is what makes witness equality sound,
+  and the "witness equality" test in `test/bbs.test.ts` demonstrates the full flow.
 - Randomized operations (`commit`, `proofGen`, `blindProofGen`) accept
   `{ randomScalars }` so tests can replay a fixture's pinned randomness, and
   `{ traceSink }` to observe the spec's trace intermediates (`B`, `domain`, `Abar`, `T1`, …).

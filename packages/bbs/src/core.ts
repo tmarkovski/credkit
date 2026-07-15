@@ -39,9 +39,11 @@ export interface Signature {
  *
  * `messageBlindings` is NOT part of the wire format — it is deliberately surfaced for
  * `packages/proofs`, which must share a hidden message's Schnorr blinding across statements to
- * prove witness equality (that is the entire link-secret mechanic). Keys are the caller's
- * message indexes; the always-hidden prover-blind slot is not exposed. Keep it reachable, keep
- * it out of serialization, and never let it cross a process boundary.
+ * prove witness equality (that is the entire link-secret mechanic). Sharing a blinding is only
+ * sound under ONE merged challenge (see `ProofSecrets`); the three-phase
+ * `proofInit`/`proofChallenge`/`proofFinalize` API exists for exactly that. Keys are the
+ * caller's message indexes; the always-hidden prover-blind slot is not exposed. Keep it
+ * reachable, keep it out of serialization, and never let it cross a process boundary.
  */
 export interface Proof {
   readonly Abar: G1Point;
@@ -316,29 +318,76 @@ export function octetsToProof(suite: Ciphersuite, octets: Uint8Array): Proof {
 // Core sign/verify/proof (spec 3.6, 3.7) over an explicit generator vector
 // ---------------------------------------------------------------------------
 
-function challengeHash(
+/**
+ * Public commitments produced by `proofInit` / `proofVerifyInit` (the spec's `init_res`),
+ * together with the disclosed data they were computed over. This is exactly what a
+ * Fiat–Shamir transcript must absorb for one statement: `packages/proofs` hashes several of
+ * these into ONE merged challenge to prove witness equality across statements.
+ */
+export interface ProofInitParts {
+  readonly Abar: PointG1;
+  readonly Bbar: PointG1;
+  readonly D: PointG1;
+  readonly T1: PointG1;
+  readonly T2: PointG1;
+  readonly domain: Scalar;
+  readonly disclosedIndexes: readonly number[];
+  readonly disclosedScalars: readonly Scalar[];
+}
+
+/**
+ * The prover's secret Schnorr state between `proofInit` and `proofFinalize`. Never serialize
+ * or log it, and never reuse a blinding under two DIFFERENT challenges — with shared `m~` and
+ * distinct challenges, `m^_1 - m^_2 = (c_1 - c_2) * m` hands the verifier the witness.
+ * Sharing blindings is only sound under one merged challenge.
+ */
+export interface ProofSecrets {
+  readonly e: Scalar;
+  readonly r1: Scalar;
+  readonly r3: Scalar;
+  readonly eTilde: Scalar;
+  readonly r1Tilde: Scalar;
+  readonly r3Tilde: Scalar;
+  readonly mTildes: readonly Scalar[];
+  readonly undisclosedIndexes: readonly number[];
+  readonly undisclosedScalars: readonly Scalar[];
+}
+
+/** Everything `proofFinalize` needs, plus `B`/`randomScalars` for the fixture traces. */
+export interface ProofInitState extends ProofInitParts {
+  readonly B: PointG1;
+  readonly randomScalars: readonly Scalar[];
+  readonly secrets: ProofSecrets;
+}
+
+/**
+ * `ProofChallengeCalculate` for a single statement, shared by the prove and verify sides.
+ * Multi-statement presentations must NOT call this per statement — they need one merged
+ * challenge over every statement's `ProofInitParts` (see the `ProofSecrets` warning).
+ */
+export function proofChallenge(
   suite: Ciphersuite,
-  parts: { Abar: PointG1; Bbar: PointG1; D: PointG1; T1: PointG1; T2: PointG1 },
-  disclosedIndexes: readonly number[],
-  disclosedScalars: readonly Scalar[],
-  domain: Scalar,
-  ph: Uint8Array,
+  init: ProofInitParts,
+  presentationHeader: Uint8Array,
   apiId: string,
 ): Scalar {
-  if (ph.length > 0xffff_ffff) throw new Error("challenge: presentation header too long");
+  if (presentationHeader.length > 0xffff_ffff) {
+    throw new Error("challenge: presentation header too long");
+  }
+  const { disclosedIndexes, disclosedScalars } = init;
   const pieces: Uint8Array[] = [i2osp(disclosedIndexes.length, 8)];
   for (let k = 0; k < disclosedIndexes.length; k++) {
     pieces.push(i2osp(disclosedIndexes[k]!, 8), i2osp(disclosedScalars[k]!, suite.scalarLength));
   }
   pieces.push(
-    parts.Abar.toBytes(),
-    parts.Bbar.toBytes(),
-    parts.D.toBytes(),
-    parts.T1.toBytes(),
-    parts.T2.toBytes(),
-    i2osp(domain, suite.scalarLength),
-    i2osp(ph.length, 8),
-    ph,
+    init.Abar.toBytes(),
+    init.Bbar.toBytes(),
+    init.D.toBytes(),
+    init.T1.toBytes(),
+    init.T2.toBytes(),
+    i2osp(init.domain, suite.scalarLength),
+    i2osp(presentationHeader.length, 8),
+    presentationHeader,
   );
   return hash2s(suite, concatBytes(...pieces), apiId);
 }
@@ -384,22 +433,22 @@ export function coreVerify(
 }
 
 /**
- * `CoreProofGen` (ProofInit + challenge + ProofFinalize) over an explicit combined generator
- * vector. `messageScalars` must line up 1:1 with `generators[1..]`.
+ * `ProofInit`: draw the randomness and compute the proof commitments for one statement,
+ * WITHOUT fixing a challenge. `messageScalars` must line up 1:1 with `generators[1..]`.
+ * The caller decides the challenge — `proofChallenge` for a standalone proof, or an external
+ * merged transcript over several statements' `ProofInitParts` for linked presentations.
  */
-export function coreProofGen(
+export function proofInit(
   suite: Ciphersuite,
   publicKey: G2Point,
   signature: Signature,
   generators: readonly PointG1[],
   header: Uint8Array,
-  presentationHeader: Uint8Array,
   messageScalars: readonly Scalar[],
   disclosedIndexes: readonly number[],
   apiId: string,
   randomScalars: RandomScalars,
-  traceSink?: (trace: ProofGenTrace) => void,
-): Proof {
+): ProofInitState {
   const L = messageScalars.length;
   if (generators.length !== L + 1) throw new Error("proofGen: generator/message count mismatch");
   validateDisclosedIndexes(disclosedIndexes, L);
@@ -436,42 +485,48 @@ export function coreProofGen(
     ),
   );
 
-  const disclosedScalars = disclosedIndexes.map((i) => messageScalars[i]!);
-  const challenge = challengeHash(
-    suite,
-    { Abar, Bbar, D, T1, T2 },
-    disclosedIndexes,
-    disclosedScalars,
-    domain,
-    presentationHeader,
-    apiId,
-  );
-
-  const r3 = Fr.inv(Fr.create(r2));
-  const eHat = Fr.add(Fr.create(eTilde), Fr.mul(e, challenge));
-  const r1Hat = Fr.sub(Fr.create(r1Tilde), Fr.mul(Fr.create(r1), challenge));
-  const r3Hat = Fr.sub(Fr.create(r3Tilde), Fr.mul(r3, challenge));
-  const commitments = undisclosed.map((j, k) =>
-    Fr.add(Fr.create(mTildes[k]!), Fr.mul(Fr.create(messageScalars[j]!), challenge)),
-  );
-  const messageBlindings = new Map(undisclosed.map((j, k) => [j, Fr.create(mTildes[k]!)]));
-
-  traceSink?.({
-    randomScalars: random,
-    B: B.toBytes(),
-    Abar: Abar.toBytes(),
-    Bbar: Bbar.toBytes(),
-    D: D.toBytes(),
-    T1: T1.toBytes(),
-    T2: T2.toBytes(),
-    domain,
-    challenge,
-  });
-
   return {
-    Abar: Abar.toBytes(),
-    Bbar: Bbar.toBytes(),
-    D: D.toBytes(),
+    Abar,
+    Bbar,
+    D,
+    T1,
+    T2,
+    domain,
+    disclosedIndexes: [...disclosedIndexes],
+    disclosedScalars: disclosedIndexes.map((i) => messageScalars[i]!),
+    B,
+    randomScalars: random,
+    secrets: {
+      e,
+      r1: Fr.create(r1),
+      r3: Fr.inv(Fr.create(r2)),
+      eTilde,
+      r1Tilde,
+      r3Tilde,
+      mTildes,
+      undisclosedIndexes: undisclosed,
+      undisclosedScalars: undisclosed.map((j) => messageScalars[j]!),
+    },
+  };
+}
+
+/** `ProofFinalize`: fold a challenge (own or merged) into the Schnorr responses. */
+export function proofFinalize(state: ProofInitState, challenge: Scalar): Proof {
+  assertScalar(challenge, "proof challenge");
+  const s = state.secrets;
+  const eHat = Fr.add(Fr.create(s.eTilde), Fr.mul(s.e, challenge));
+  const r1Hat = Fr.sub(Fr.create(s.r1Tilde), Fr.mul(s.r1, challenge));
+  const r3Hat = Fr.sub(Fr.create(s.r3Tilde), Fr.mul(s.r3, challenge));
+  const commitments = s.undisclosedIndexes.map((_, k) =>
+    Fr.add(Fr.create(s.mTildes[k]!), Fr.mul(Fr.create(s.undisclosedScalars[k]!), challenge)),
+  );
+  const messageBlindings = new Map(
+    s.undisclosedIndexes.map((j, k) => [j, Fr.create(s.mTildes[k]!)]),
+  );
+  return {
+    Abar: state.Abar.toBytes(),
+    Bbar: state.Bbar.toBytes(),
+    D: state.D.toBytes(),
     eHat,
     r1Hat,
     r3Hat,
@@ -482,9 +537,137 @@ export function coreProofGen(
 }
 
 /**
- * `CoreProofVerify` over an explicit combined generator vector. `disclosed` maps message index
- * (in the same index space as the generator vector) to the disclosed message scalar.
- * Fails closed: any malformed input returns false.
+ * `CoreProofGen` = proofInit + proofChallenge + proofFinalize over an explicit combined
+ * generator vector — the standalone single-statement composition.
+ */
+export function coreProofGen(
+  suite: Ciphersuite,
+  publicKey: G2Point,
+  signature: Signature,
+  generators: readonly PointG1[],
+  header: Uint8Array,
+  presentationHeader: Uint8Array,
+  messageScalars: readonly Scalar[],
+  disclosedIndexes: readonly number[],
+  apiId: string,
+  randomScalars: RandomScalars,
+  traceSink?: (trace: ProofGenTrace) => void,
+): Proof {
+  const state = proofInit(
+    suite,
+    publicKey,
+    signature,
+    generators,
+    header,
+    messageScalars,
+    disclosedIndexes,
+    apiId,
+    randomScalars,
+  );
+  const challenge = proofChallenge(suite, state, presentationHeader, apiId);
+  const proof = proofFinalize(state, challenge);
+
+  traceSink?.({
+    randomScalars: state.randomScalars,
+    B: state.B.toBytes(),
+    Abar: proof.Abar,
+    Bbar: proof.Bbar,
+    D: proof.D,
+    T1: state.T1.toBytes(),
+    T2: state.T2.toBytes(),
+    domain: state.domain,
+    challenge,
+  });
+
+  return proof;
+}
+
+/**
+ * `ProofVerifyInit`: parse + validate the proof and recompute the commitments (T1, T2) from
+ * the responses and the proof's challenge. `disclosed` maps message index (in the same index
+ * space as the generator vector) to the disclosed message scalar. Throws on malformed input;
+ * the caller then recomputes the challenge over the returned parts and, if it matches, runs
+ * `proofVerifyFinalize` for the pairing check.
+ */
+export function proofVerifyInit(
+  suite: Ciphersuite,
+  publicKey: G2Point,
+  proof: Proof,
+  generators: readonly PointG1[],
+  header: Uint8Array,
+  disclosed: ReadonlyMap<number, Scalar>,
+  apiId: string,
+): ProofInitParts {
+  g2FromBytes(publicKey, "public key");
+  const Abar = g1FromBytes(suite, proof.Abar, "proof Abar");
+  const Bbar = g1FromBytes(suite, proof.Bbar, "proof Bbar");
+  const D = g1FromBytes(suite, proof.D, "proof D");
+  const c = assertScalar(proof.challenge, "proof challenge");
+  assertScalar(proof.eHat, "proof e^");
+  assertScalar(proof.r1Hat, "proof r1^");
+  assertScalar(proof.r3Hat, "proof r3^");
+  for (const m of proof.commitments) assertScalar(m, "proof m^");
+
+  const R = disclosed.size;
+  const U = proof.commitments.length;
+  const L = R + U;
+  if (generators.length !== L + 1) {
+    throw new Error("proofVerify: generator/message count mismatch");
+  }
+  const disclosedIndexes = [...disclosed.keys()].sort((a, b) => a - b);
+  validateDisclosedIndexes(disclosedIndexes, L);
+  const disclosedSet = new Set(disclosedIndexes);
+  const undisclosed: number[] = [];
+  for (let i = 0; i < L; i++) if (!disclosedSet.has(i)) undisclosed.push(i);
+
+  const domain = calculateDomain(suite, publicKey, generators, header, apiId);
+  const T1 = mul(Bbar, c).add(mul(Abar, proof.eHat)).add(mul(D, proof.r1Hat));
+  const Bv = suite.P1
+    .add(mul(generators[0]!, domain))
+    .add(
+      sumOfProducts(
+        disclosedIndexes.map((i) => generators[i + 1]!),
+        disclosedIndexes.map((i) => disclosed.get(i)!),
+      ),
+    );
+  const T2 = mul(Bv, c)
+    .add(mul(D, proof.r3Hat))
+    .add(
+      sumOfProducts(
+        undisclosed.map((j) => generators[j + 1]!),
+        proof.commitments,
+      ),
+    );
+
+  return {
+    Abar,
+    Bbar,
+    D,
+    T1,
+    T2,
+    domain,
+    disclosedIndexes,
+    disclosedScalars: disclosedIndexes.map((i) => disclosed.get(i)!),
+  };
+}
+
+/**
+ * The pairing check e(Abar, W) * e(-Bbar, BP2) == 1. Only meaningful AFTER the caller has
+ * recomputed the challenge over `init` and matched it against the proof's challenge — this
+ * check alone does not validate the Schnorr responses.
+ */
+export function proofVerifyFinalize(publicKey: G2Point, init: ProofInitParts): boolean {
+  const W = g2FromBytes(publicKey, "public key");
+  const res = bls12_381.pairingBatch([
+    { g1: init.Abar, g2: W },
+    { g1: init.Bbar.negate(), g2: G2.BASE },
+  ]);
+  return Fp12.eql(res, Fp12.ONE);
+}
+
+/**
+ * `CoreProofVerify` = proofVerifyInit + proofChallenge + proofVerifyFinalize over an explicit
+ * combined generator vector. Fails closed: any malformed input returns false.
  */
 export function coreProofVerify(
   suite: Ciphersuite,
@@ -497,59 +680,9 @@ export function coreProofVerify(
   apiId: string,
 ): boolean {
   try {
-    const W = g2FromBytes(publicKey, "public key");
-    const Abar = g1FromBytes(suite, proof.Abar, "proof Abar");
-    const Bbar = g1FromBytes(suite, proof.Bbar, "proof Bbar");
-    const D = g1FromBytes(suite, proof.D, "proof D");
-    const c = assertScalar(proof.challenge, "proof challenge");
-    assertScalar(proof.eHat, "proof e^");
-    assertScalar(proof.r1Hat, "proof r1^");
-    assertScalar(proof.r3Hat, "proof r3^");
-    for (const m of proof.commitments) assertScalar(m, "proof m^");
-
-    const R = disclosed.size;
-    const U = proof.commitments.length;
-    const L = R + U;
-    if (generators.length !== L + 1) return false;
-    const disclosedIndexes = [...disclosed.keys()].sort((a, b) => a - b);
-    validateDisclosedIndexes(disclosedIndexes, L);
-    const disclosedSet = new Set(disclosedIndexes);
-    const undisclosed: number[] = [];
-    for (let i = 0; i < L; i++) if (!disclosedSet.has(i)) undisclosed.push(i);
-
-    const domain = calculateDomain(suite, publicKey, generators, header, apiId);
-    const T1 = mul(Bbar, c).add(mul(Abar, proof.eHat)).add(mul(D, proof.r1Hat));
-    const Bv = suite.P1
-      .add(mul(generators[0]!, domain))
-      .add(
-        sumOfProducts(
-          disclosedIndexes.map((i) => generators[i + 1]!),
-          disclosedIndexes.map((i) => disclosed.get(i)!),
-        ),
-      );
-    const T2 = mul(Bv, c)
-      .add(mul(D, proof.r3Hat))
-      .add(
-        sumOfProducts(
-          undisclosed.map((j) => generators[j + 1]!),
-          proof.commitments,
-        ),
-      );
-    const cv = challengeHash(
-      suite,
-      { Abar, Bbar, D, T1, T2 },
-      disclosedIndexes,
-      disclosedIndexes.map((i) => disclosed.get(i)!),
-      domain,
-      presentationHeader,
-      apiId,
-    );
-    if (cv !== c) return false;
-    const res = bls12_381.pairingBatch([
-      { g1: Abar, g2: W },
-      { g1: Bbar.negate(), g2: G2.BASE },
-    ]);
-    return Fp12.eql(res, Fp12.ONE);
+    const init = proofVerifyInit(suite, publicKey, proof, generators, header, disclosed, apiId);
+    if (proofChallenge(suite, init, presentationHeader, apiId) !== proof.challenge) return false;
+    return proofVerifyFinalize(publicKey, init);
   } catch {
     return false;
   }
