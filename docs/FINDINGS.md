@@ -1,0 +1,190 @@
+# Findings
+
+The research record behind this repo's design. Every decision below was expensive to reach.
+If you want to overturn one, overturn the evidence — don't just re-reason from the premises.
+
+Researched July 2026. Facts with dates attached will rot; re-verify before relying on them.
+
+---
+
+## 1. Blind BBS is a real spec, actively moving, and not finalized
+
+`draft-irtf-cfrg-bbs-blind-signatures` is a CFRG adopted RG document (the `draft-kalos-*` name
+was replaced after the adoption call closed December 2024). Intended status Informational — it
+is **not** and will not soon be an RFC, and the boilerplate says it "is not endorsed by the IETF
+and has no formal standing."
+
+- **-03 published 26 June 2026.** Expires 28 December 2026.
+- **-04 is already in progress** — "update document history to 04" landed 3 July 2026.
+- **13 July 2026: "Fix m~_k typoed as m~_j_k in proof gen/verify."** A math typo in the core
+  proof algorithm, fixed *after* -03 shipped.
+
+That last one is the operative fact. **Implement from the repo's `main`, never from the
+published -03 text**, or you will faithfully implement a typo. The vendored snapshot at
+`docs/spec-blind-bbs-snapshot.md` is pinned to `56b032e2faf25b2415bdcf9034cae1ca5e805e5c` and
+is a convenience, not the source of truth.
+
+## 2. Do NOT implement COMMIT mode
+
+The `-03` draft added a third disclosure mode alongside DISCLOSE and HIDE. A `{i: COMMIT}` entry
+in `message_disclosures` means "only a commitment to `messages[i]` is disclosed," producing
+`C_i = Y_0 * s_i + Y_1 * messages[idx]` with fresh `s_i` per presentation. §1.3 names range
+proofs as the intended external predicate. On its face this is exactly what we want: a
+per-presentation, non-correlating commitment to a signed-but-hidden value.
+
+**Skip it anyway.** Two reasons, and the second is the real one:
+
+**It's the least settled thing in the draft.** Zero fixtures cover it — all 8 proof vectors are
+DISCLOSE/HIDE permutations. PR #38 (`com-dis-update`) rewrote committed disclosure on 3 July
+2026. You'd be implementing the one thing you need blind, against text that changed last week.
+
+**We don't need it.** The composite framework (`packages/proofs`) gets the same capability from
+a Pedersen commitment statement plus witness equality: commit to the value with a fresh
+blinding, then prove via shared Schnorr blinding and a merged challenge that it opens to the
+same value the issuer signed. That *is* COMMIT mode, built from parts we need anyway for the
+link secret. COMMIT mode is the spec's convenience for people who don't have a composite
+framework. We have one.
+
+So what we need from the blind BBS spec collapses to **`Commit()`, `BlindSign()`, and a
+`ProofGen` we can reach inside of**. All three are in the stable, fixture-covered part.
+
+## 3. The fixtures are unusually good — they are the whole method
+
+Vendored at `packages/bbs/test/fixtures`, pinned to `56b032e`. 33 files, both ciphersuites
+(`bls12-381-sha-256`, `bls12-381-shake-256`): `commit` ×2, `signature` ×5, `proof` ×8, plus
+`generators.json` and `messages.json`.
+
+Two properties make them worth more than typical vectors:
+
+**They're deterministic.** Each carries `mockRngParameters` with `SEED:
+"3.141592653589793238462643383279"` and mock random-scalar DSTs. Implement the mocked
+`calculate_random_scalars` and a randomized protocol becomes byte-reproducible.
+
+**They ship intermediate traces.** `proof001.json` has
+`trace: [random_scalars, Abar, B, Bbar, D, T1, T2, domain, challenge]`. You learn *which step*
+is wrong, not just that the final bytes differ. This is the difference between a day and a week
+on any given bug.
+
+Fixture coverage runs out after `packages/bbs`. Everything above it has no vectors at all.
+
+## 4. The curve analysis that killed the SNARK approach
+
+The predecessor stack used Noir + UltraHonk via `@aztec/bb.js`, which is BN254-only — not
+incidentally, but because UltraHonk is welded to the BN254/Grumpkin cycle it uses for recursion.
+The obvious idea is "run Noir on BLS12-381 so the fields line up." It fails twice.
+
+**There's no backend.** The one serious attempt ([Interstellar](https://github.com/orgs/noir-lang/discussions/8654),
+ACIR → Arkworks `ark_groth16` over BLS12-381) is a **grant proposal from May 2025**, not a
+product: partial blackbox opcodes, no recursion, and it hand-waves the ACIR field question.
+
+**It wouldn't help anyway.** This is the part worth internalizing. Aligning the circuit's native
+field with BBS's *scalar* field Fr makes the witness compatible. But the commitment is a **point
+in G1**, whose coordinates live in the 381-bit **base** field Fq. Fq ≠ Fr. Computing it
+in-circuit means emulating 381-bit non-native arithmetic *regardless of which field the circuit
+is native over*. That's what `noir_bigcurve` is for and why it's expensive. **Curve alignment is
+necessary but nowhere near sufficient.**
+
+The actual missing ingredient is **commit-and-prove**, a property of the proving system, not the
+curve. LegoGroth16's trick is that the commitment is never computed in-circuit: the prover emits
+a Pedersen commitment `D` to a designated witness slice *outside* the circuit, Groth16 soundness
+ties `D` to the witness, and a cheap Schnorr proof links `D` to the BBS commitment. Zero
+in-circuit EC operations. UltraHonk does not expose this on any curve — its witness commitments
+are KZG commitments to whole polynomials, not Pedersen commitments to individual values.
+
+For the record, circom *does* support BLS12-381 today (`circom --prime bls12381`, `snarkjs
+powersoftau new bls12-381`, Groth16). If a SNARK ever comes back, that's the door — not Noir.
+But snarkjs has no LegoGroth16 either, so you'd hit the same wall with better field alignment.
+
+**We took the third door: no SNARK at all.** See §6.
+
+## 5. AnonCreds v2 is an architecture reference, not a wire reference
+
+`anoncreds/anoncreds-v2-rs` (crate `credx` v0.2.1, last pushed April 2026, 58 stars) is the
+closest thing to a working version of what we're building. But it does **not** implement any
+IETF BBS spec, and this matters:
+
+- BBS is vendored in-tree at `src/knox/bbs/` (mikelodder7's Knox). Sibling module
+  `src/knox/short_group_sig_core/` gives away the lineage: academic short-group-signature
+  family, not the ciphersuite-based IETF scheme.
+- No ciphersuite identifiers — nothing like `BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_`.
+- No `create_generators`; it has its own `msg_gens.rs`.
+- Domain separation is Merlin transcript labels (`b"new blind signature"`), not IETF DSTs.
+- Searching the repo for `cfrg` returns zero hits.
+- Its blind issuance is classic BBS+ blind signing (G1 commitment + Schnorr PoK), which predates
+  the IETF draft and is structurally unrelated. No COMMIT mode.
+
+**Consequence: you cannot byte-compare against it.** Different generators, DSTs, transcripts —
+every intermediate value diverges. Cross-checking is *structural only*: same statement
+composition, same equality mechanic, same protocol shape. Useful for catching design errors.
+Not a test oracle. Do not plan as if it were one.
+
+The strategic shape this forces: **the spec with test vectors has no reference implementation for
+the composite layer, and the reference implementation has no spec or test vectors.** You can't
+have both. So: IETF for the wire and `packages/bbs`, AnonCreds for architecture above it.
+
+## 6. Range proofs: CCS, not Bulletproofs — and why we diverge from AnonCreds
+
+AnonCreds v2 uses Bulletproofs (`bulletproofs = { version = "4.0.0", package =
+"bulletproofs-bls" }`, 64-bit ranges, `prove_single`/`prove_multiple`). We won't.
+
+This is not a crypto disagreement — it's build-vs-buy. In Rust, `bulletproofs-bls` is a one-line
+dependency, so their implementation cost was zero and Bulletproofs was obviously right. In
+TypeScript that crate doesn't exist and we'd be writing an inner-product argument from scratch,
+which is a serious build with real browser-perf problems.
+
+**Use CCS instead** ([Camenisch–Chaabouni–shelat, ASIACRYPT 2008](https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15)).
+The verifier publishes Boneh–Boyen signatures on the elements of a set; the prover proves
+knowledge of a signature on their committed value by revealing a blinded signature. Ranges come
+from digit decomposition. It reuses **the same pairing toolkit as BBS** — no new primitive
+family, no inner-product argument.
+
+Concretely for age: encode dob as **days since 1900** (this also avoids the pre-1970 bug the
+predecessor stack had from a `u32` dob), then prove one-sided
+`(cutoff_days - dob_days) ∈ [0, 2^16)`. Base 16, 4 digits → 4 digit proofs against a published
+16-signature alphabet. One-sided suffices: a negative difference wraps to a ~255-bit value in
+Fr, which the range proof rejects. The incidental upper bound just asserts the holder is under
+179 years old.
+
+The "trusted setup" is the verifier signing its own alphabet. If it cheats, it only fools
+itself. No ceremony.
+
+**Cost of diverging:** `packages/range` gets zero help from the reference implementation. This is
+a strong argument for building it last.
+
+## 7. Two things worth stealing from anoncreds-v2-rs
+
+**The Pedersen indirection.** Their range proof doesn't link to the signature directly. It goes
+`PoKBBSSignature → PedersenCommitment(shared blinding) → RangeProof`, with the commitment's
+blinding shared across the link (`src/presentation/range.rs` reuses `commitment_builder.b`).
+This is better than linking sig↔range directly: it decouples the range backend from BBS
+entirely, so CCS vs Bulletproofs becomes a swappable backend decided late. **Adopt this.**
+
+**Merlin.** They use `merlin = "3"` for every transcript. That's not incidental — Merlin is a
+STROBE-based protocol built specifically to make Fiat-Shamir composition hard to botch, forcing
+labeled, length-prefixed absorption of every message. Port the *discipline* into
+`packages/proofs`: a transcript object with labeled appends, never ad-hoc `H(a || b || c)`
+concatenation. A faithful Merlin port is optional; the labeling discipline is not.
+
+## 8. The link secret is the keystone
+
+All three of the hard properties are one construction, not three. The holder picks a secret `s`
+once, for life. Every credential from every issuer is signed over `s` — **blindly**, so no issuer
+learns it.
+
+- **Credential linkability** falls out directly: two `PoKBBSSignature` statements with a
+  `WitnessEquality` on the `s` index. The verifier learns "same holder" and nothing else.
+- **Blindness is load-bearing, not a nicety.** If the issuer sees `s`, two colluding issuers can
+  join every credential you hold, destroying the property the link secret exists to give you
+  *selectively*.
+- **Verifier unlinkability is free** — BBS proofs are already randomized per presentation. You
+  get it by *deleting* the stable disclosure, not by adding machinery.
+
+## 9. The no-WASM constraint pays for itself
+
+`@noble/curves` is pure TypeScript. The predecessor stack couldn't verify ZK proofs in a
+Cloudflare Worker at all — bb.js instantiates WASM from bytes, which Workers prohibit — so it
+punted verification to the verifier's own client and returned a `zk_pending` verdict. A
+noble-based stack verifies server-side. That verdict stops existing.
+
+This is why "rewrite the crypto in TS" has an architectural return and not just a privacy one.
+Treat no-WASM as a hard constraint, not a preference.

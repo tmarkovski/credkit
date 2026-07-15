@@ -57,5 +57,3 @@ docs/
    verification run in a Cloudflare Worker, which the incumbent stack cannot do.
 3. **No SNARKs.** No circom, no Noir, no bb.js, no Poseidon. If you think you need a circuit,
    read [docs/FINDINGS.md](docs/FINDINGS.md) first; the answer is in there.
-</content>
-</invoke>
