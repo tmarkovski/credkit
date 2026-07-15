@@ -39,8 +39,9 @@ is the thing the incumbent stack cannot do without a correlation handle.
 
 **One gap remains.** Each cryptosuite proof carries one credential. The link secret is
 signed, hidden, and reachable, but proving two credentials belong to the same holder needs a
-presentation envelope carrying N statements — designed at the `packages/proofs` layer,
-not yet exposed at the JSON-LD layer. See FINDINGS §15.
+presentation envelope carrying N statements — built at the `packages/proofs` layer, not yet
+exposed at the JSON-LD layer. Designed in FINDINGS §16 (a Verifiable Presentation under a
+second cryptosuite); not yet implemented.
 
 **Start at [docs/BRIEF.md](docs/BRIEF.md).**
 

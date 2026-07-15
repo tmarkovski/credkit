@@ -84,8 +84,11 @@ is where Fiat–Shamir bugs breed.
 ## Scope
 
 One credential per proof. The link secret is signed, hidden, and reachable — but proving two
-credentials share a holder needs a VP envelope carrying N statements, which is its own design
-pass (§14 deferred it, §15 restates it). Nothing about this wire format blocks it.
+credentials share a holder needs a VP envelope carrying N statements. That envelope is
+designed in §16 — a Verifiable Presentation secured by a second cryptosuite, with each
+credential's `proof` holding a statement descriptor and one merged proof at the VP level —
+and is not yet built. Nothing about this wire format blocks it, though landing it will change
+this one (§12's rule: bump the version, never edit the hex).
 
 ## Running
 

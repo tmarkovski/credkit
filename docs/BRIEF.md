@@ -124,5 +124,5 @@ Not your problem yet, but it explains the API constraints above:
   Schnorr blinding under the merged challenge — the Pedersen indirection §7 planned turned
   out to be unnecessary for a sigma-protocol backend (FINDINGS §12). *(Built.)*
 - **`packages/cryptosuite`** — the JSON-LD suite. Bespoke; no interop pretense. *(Built —
-  design in FINDINGS §14, implementation record in §15. Single-credential: the N-statement
-  presentation envelope is the one piece still outstanding.)*
+  design in FINDINGS §14, implementation record in §15. Single-credential; the N-statement
+  presentation envelope is designed in §16 and is the one piece still outstanding.)*

@@ -641,4 +641,119 @@ secret is signed, hidden, and reachable — `WitnessEquality` across two stateme
 revealed subsets yet. Nothing in this wire format blocks it; the derived envelope grows a
 statement array and the claim lists grow a statement index. That is the next design pass, and
 it is the last thing standing between this stack and the README's four properties in one
-JSON-LD presentation.
+JSON-LD presentation. *(Designed in §16.)*
+
+## 16. The presentation envelope (2026-07-15, design record — written before code)
+
+The last gap: N credentials, one merged challenge, in a JSON-LD document. Written before the
+code, same as §14 — if the implementation disagrees, record the divergence here rather than
+drifting. Data-model facts verified against the vendored v2 context and VCDM 2.0 on
+2026-07-15.
+
+**A Verifiable Presentation, secured by a SECOND DataIntegrityProof cryptosuite. These were
+never alternatives.** "On top of VPs" names the document; "another DI cryptosuite" names the
+securing mechanism; they compose, and the answer is both. The third option considered — a
+bespoke non-DI presentation format — is rejected on sight: it is exactly what AnonCreds did,
+and "isn't JSON-LD" is the complaint this repo opens with. The suite needs its OWN id
+(`credkit-bbs-presentation-*`) and its own envelope prefixes, never a reuse of the VC-level
+suite's: a cryptosuite id names an algorithm, this algorithm takes a different document and
+does a different thing, and same-id-different-algorithm is the ambiguity §11 and §14 keep
+refusing.
+
+**`@container: @graph` is the structural fact that decides the whole design.** The v2 context
+defines `verifiableCredential` (inside the `VerifiablePresentation` type-scoped context) as
+`@type: @id`, `@container: @graph`, `@context: null`. The graph container means canonicalizing
+a VP puts each credential's triples in a NAMED GRAPH: `_:c14nX <birthDate> "…" _:c14nG .`
+against the `_:b0 <birthDate> "…" .` triple the issuer actually signed, under a different
+label shuffle besides. **VP-level canonicalization is therefore useless for reconstructing
+signed messages, and the VP body is a carrier the VP proof does not hash over.** That is not a
+workaround; it is what credkit's binding already implies. Each credential is bound by its own
+BBS signature; the merged transcript already absorbs, per statement, the public key, header,
+counts, and disclosed (index, scalar) pairs. Reordering or swapping credentials in the VP body
+breaks the challenge for free — no envelope-level integrity check to write.
+
+**`"@context": null` is the data model's own affordance for what we need.** That property-scoped
+reset means an embedded credential does NOT inherit the VP's context: it carries its own and is
+self-contained. So the verifier extracts each credential and canonicalizes it standalone,
+reproducing issuance exactly. Without this the design would need a bespoke carrier term; with
+it, the standard shape works.
+
+**The one real friction, and the hook that resolves it.** The data model expects each enclosed
+credential to carry its own proof, but ours is ONE proof across N credentials — the merged
+challenge is non-negotiable (§11: a blinding shared under two challenges hands the verifier the
+witness). VCDM 2.0 §3.3 anticipates presentations carrying data "synthesized from, but does not
+contain, the original" credentials, naming zero-knowledge proofs specifically. The thing in the
+VP is not the credential; it is a derivation of it. So:
+
+- Each `verifiableCredential` entry carries a `proof` that is a **statement descriptor** —
+  that credential's reconstruction data: `mode`, `labelMap`, `mandatoryIndexes`,
+  `selectiveIndexes`, `nQuads`, `numericDecl`, and the issuer's `verificationMethod`
+  IDENTIFIER (never a key — §15's rule stands: a key on the wire only proves the prover holds
+  *a* key).
+- The **VP-level proof** carries the merged presentation: `presentationOctets`, the equality
+  constraints, and the claim lists, now indexed by statement.
+- Descriptors get their own envelope prefix, so feeding one to a verify entry point fails as
+  "not a proof" — the pattern §15 already uses to reject a base proof presented as a derived
+  one.
+
+**Descriptors need no separate integrity mechanism — every field fails closed through the
+proof.** `numericDecl` is recomputed into the header's third segment (§14); `nQuads` and `mode`
+fix L and M and therefore the generator vector; `mandatoryIndexes` decides what feeds
+`mandatoryHash`; `labelMap` and `selectiveIndexes` decide the disclosed quad strings, which are
+absorbed as scalars. A lie in any of them yields a header or transcript that does not
+reconstruct. Same argument as §14's header chain: the binding is the signature, not a new
+mechanism.
+
+**N=1 becomes the projection of N, and that is an honest §11 argument rather than a packaging
+preference.** §15's single-credential derived proof value is already a descriptor and a
+VP-level part fused into one CBOR array. Splitting them along that seam gives one mental model
+and one claim encoding at both arities.
+
+**One ciphersuite per presentation, enforced loudly — this is a cross-issuer interop
+constraint, not hygiene.** `provePresentation` takes a single suite, and the link secret's
+scalar is `messagesToScalars(suite, [secret], blindApiId)` — SUITE-DEPENDENT. A
+`credkit-bbs-sha-2026` credential and a `credkit-bbs-shake-2026` credential can never share a
+link-secret equality: the same secret is a different scalar under each. Anyone deploying two
+issuers must pin one cryptosuite across both, forever. Worth stating before someone discovers
+it in production.
+
+**`holder` must be absent and unrepresentable, and this is load-bearing.** VCDM makes it
+optional. A VP carrying `holder: did:example:alice` is a stable identifier handed to every
+verifier — it destroys the link secret's entire purpose in one property, the §8 point inverted.
+Same treatment `created` gets in §15: never constructed, not merely defaulted off.
+
+**Equality references are symbolic, never raw indexes.** `{statement: i, linkSecret: true}` or
+`{statement: i, pointer: "/credentialSubject/birthDate"}`, resolved to message indexes inside
+the layer. `L` differs per credential (`nQuads + k`), so a raw index into another credential's
+message space is both a footgun and unstable. Pointer-keyed is the §14 decision carried
+forward; a twin equality also requires matching `encoderId` on both sides, which §14 already
+called the argument for a shared encoder registry.
+
+**`challenge` and `domain` are the nonce, and no @context extension is needed.** DI's
+authentication-purpose proof options already carry both, and both are defined in the v2 context
+(verified, alongside `DataIntegrityProof`, `cryptosuite`, `proofValue`, `proofPurpose`,
+`verificationMethod`). Fold them into `presentationHeader` — which the merged transcript
+absorbs first — and the VP proof options are bound with no change to `packages/proofs`.
+Everything credkit-specific stays inside opaque `proofValue`s, so the envelope adds no terms;
+only the credential's own attributes still need their own context.
+
+**Distinctness is the verifier's business, not the library's.** Nothing stops a prover from
+presenting ONE credential as two statements and proving their link secrets equal — trivially
+true, and meaningless. The verifier supplies the public key per statement and states which
+issuer it expects where; the transcript binds those keys. So "two credentials from different
+issuers" is a policy the verifier expresses by pinning keys, and the library must not pretend
+to check it.
+
+**Rejected — per-credential independent proofs inside the VP.** The shape the data model
+reads most naturally (N credentials each carrying a normal derived proof, plus a holder proof
+over the VP) is structurally incapable of the thing this envelope exists for: N independent
+challenges cannot carry a witness equality, and sharing blindings across them would leak the
+link secret outright (§11). Attractive, standard, and unsound for our purpose — recorded so
+nobody proposes it again.
+
+**Open: whether the VC-level derived proof survives as an N=1 convenience.** VP-only is one
+format and one parse path; keeping both is two envelopes over one proof system. The existing
+VC-level proof is built, tested, and pinned, and is what a single-credential verifier actually
+wants. The lean is to keep it, DEFINED as the N=1 projection with a shared descriptor
+structure — but either way the current wire format changes, and §12's rule applies: bump the
+version, never edit the hex.
