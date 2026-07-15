@@ -19,6 +19,14 @@ export type Scalar = bigint;
 export type G1Point = Uint8Array; // compressed, 48 octets
 export type G2Point = Uint8Array; // compressed, 96 octets
 
+/**
+ * A signable message: byte strings hash to a scalar per the spec; a bigint IS the scalar
+ * (a credkit extension, not IETF). Numeric messages exist for `packages/range` — range
+ * predicates do arithmetic on the hidden value, which a hashed encoding makes meaningless.
+ * Both kinds live in one scalar space; the credential schema decides which index is which.
+ */
+export type MessageInput = Uint8Array | bigint;
+
 const Fr = bls12_381.fields.Fr;
 const Fp12 = bls12_381.fields.Fp12;
 const G1 = bls12_381.G1.Point;
@@ -168,14 +176,33 @@ export function createGenerators(
   return createGeneratorPoints(suite, count, apiId).map((p) => p.toBytes());
 }
 
-/** `messages_to_scalars` (spec 4.1.2). Defaults to the blind interface api_id. */
+/**
+ * Map one message to its scalar. Byte strings follow `messages_to_scalars` (spec 4.1.2);
+ * numeric messages are used directly and must be in [0, r). The range guarantee that
+ * `packages/proofs` builds on numeric messages is modular arithmetic — it reads as the
+ * natural >=/<= only when applications encode values well below r (say, < 2^64).
+ */
+export function messageToScalar(
+  suite: Ciphersuite,
+  message: MessageInput,
+  apiId: string = suite.blindApiId,
+): Scalar {
+  if (typeof message === "bigint") {
+    if (message < 0n || message >= suite.order) {
+      throw new Error("messageToScalar: numeric message out of range");
+    }
+    return message;
+  }
+  return suite.hashToScalar(message, utf8(`${apiId}MAP_MSG_TO_SCALAR_AS_HASH_`));
+}
+
+/** `messages_to_scalars` (spec 4.1.2), extended to numeric messages. */
 export function messagesToScalars(
   suite: Ciphersuite,
-  messages: readonly Uint8Array[],
+  messages: readonly MessageInput[],
   apiId: string = suite.blindApiId,
 ): Scalar[] {
-  const dst = utf8(`${apiId}MAP_MSG_TO_SCALAR_AS_HASH_`);
-  return messages.map((m) => suite.hashToScalar(m, dst));
+  return messages.map((m) => messageToScalar(suite, m, apiId));
 }
 
 // ---------------------------------------------------------------------------
@@ -709,7 +736,7 @@ export function sign(
   secretKey: Scalar,
   publicKey: G2Point,
   header: Uint8Array,
-  messages: readonly Uint8Array[],
+  messages: readonly MessageInput[],
   options: SignOptions = {},
 ): Signature {
   const apiId = suite.blindApiId;
@@ -729,7 +756,7 @@ export function verify(
   publicKey: G2Point,
   signature: Signature,
   header: Uint8Array,
-  messages: readonly Uint8Array[],
+  messages: readonly MessageInput[],
 ): boolean {
   try {
     const apiId = suite.blindApiId;
@@ -747,7 +774,7 @@ export function proofGen(
   signature: Signature,
   header: Uint8Array,
   presentationHeader: Uint8Array,
-  messages: readonly Uint8Array[],
+  messages: readonly MessageInput[],
   disclosedIndexes: readonly number[],
   options: ProofGenOptions = {},
 ): Proof {
@@ -782,7 +809,7 @@ export function proofVerify(
   proof: Proof,
   header: Uint8Array,
   presentationHeader: Uint8Array,
-  disclosedMessages: ReadonlyMap<number, Uint8Array>,
+  disclosedMessages: ReadonlyMap<number, MessageInput>,
 ): boolean {
   try {
     const apiId = suite.blindApiId;
@@ -790,11 +817,10 @@ export function proofVerify(
     const L = disclosedMessages.size + proof.commitments.length - 1;
     if (L < 0) return false;
     const { combined } = plainGenerators(suite, L);
-    const dst = utf8(`${apiId}MAP_MSG_TO_SCALAR_AS_HASH_`);
     const disclosed = new Map<number, Scalar>();
     for (const [i, msg] of disclosedMessages) {
       if (!Number.isInteger(i) || i < 0 || i >= L) return false;
-      disclosed.set(i, suite.hashToScalar(msg, dst));
+      disclosed.set(i, messageToScalar(suite, msg, apiId));
     }
     return coreProofVerify(
       suite,

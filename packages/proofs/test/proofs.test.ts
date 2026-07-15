@@ -54,9 +54,9 @@ import {
 
 const GOLDEN: Record<string, string> = {
   "bls12-381-sha-256":
-    "00000000000000020000000000000150a7bc5efdbe1befe99b908e667bb2944463416fdde0cc5873af027561620a1ea59f27b98edb8dba911325b05474b174eaa670e8a245a24c915826aa169619776fca026bda8a8f726b80d7bd7de98d050af7af79a3c9c24f5659c1fa8563ff8078b7ea951245a05a8095698b600dacde154fe87fd7c37d4079dc73f8f80501df86e03547679eeb30f3d4f1d7588d687d3332a45d018d23f64f4b442ee8237c5ee1ed3d25c4be115cdaaf6a1ce6f4eb00be03869a8a96c6cf656db63fc20f0a8cee841dfca3378dbb745d19584f5a6a958d0e89958380b605d640810555d0271906561c6b9da85eba4a75e6f3f18015fd6d336ae770bb96a82591ea8a3a897bc7dd4b2084cfaa882536bed017745f6835e140a8b22eff9bd3ca34ece3375b773d095cd6753d398eab305376222d813a348c41afb3bc25ad27d36dab077f08d4e2d29923b2f3e5354a590e63e819e2d4de510000000000000150975da558ec7f537c1a73b087f2a6cd8ecc444ce6fd0322c5db1c062b28f053773a20255ab3e27d327bfb7f3c2c04e6d0b9d6b0db89a8ff331b75eac37bdcd77ce682a740a93dc6c52171065da7cc1c9091b52b6d3f5da40ffea55fff7a95fd6d96780eec1b627e63d15048389149a2fc1a6ed50ac35bc9aa440cbc8d53e9bdc9f19bc0a1949339c2fb97943ad6afc7553535b9e6175ae19cc118ec5fbb2363eca39c524a541070a8bfd3feabd837fbf14cd3135da087dbe2ce1ca5ea741d3e01c62704d6d4cae2350571d201ffd360bb4cbd5d313a017d270ad2f744750ce11533d24e716998a9522a39b4979c87367a5b5b0df8db9ecd81fb2f47d4048718c590deed78066381b938e6973770fc047a41afb3bc25ad27d36dab077f08d4e2d29923b2f3e5354a590e63e819e2d4de511c5f049d4841928481544a09273d259a037ce21570a5eb1acbdfc64f83efc21160132ea049607130f79d66dd3045935a33fa2b075f68d66631e419e6fe9449ae",
+    "00000000000000020000000000000150a04788874f7fd4bf41b94d639f49be4cc005f9d8e56d8a1cf1dbd7971c2082bf61dfb34d05fb4d8cc2b46ca4e62f047b975191b0748a8bfa62340729d8bf544185340a52c9a44f945e3cc2a3ee4fd395d240ad147e571929dcd1866c308b9c27a606a997b309ff42b43e55b12e43d532b95d4ed5aa9da24b3ece4d3642265bcd5ada8b3d6c39de132e8cb9b4f10e4cef4d4c19d72fc8f2dff497a9b842feecb9f40d693e29b647b3f2c61fa640c7d06739bce698dc5b9e9ca77e4e114de83c0c5fc8ece3880263b0060044907f685bbd442f16c0f7125cae5cd5375ffc9a94e2681504e4d48d6e146c3d3675c34453bf697284c8d4d989049d7bb45bccf5d4daa59fe0948999ee767d78828f927a3b722d62621584b705cdd1be27383d2dcf729e574ec861454dd312155bb84c7b488f5afa2bb851369b91d6b3e2974310c4aadd88d80a399507e8a45d1dc5e4f42e53000000000000015089f18c245d1e3dc674bae99fb41a021b3efce024ec68ef963bc7b72df88a3ec43a239052d51d3e7d977fdeb701818219ae09f056bea22132146acf29d9cc72c9b178150926b9779e0d58e7730bd2d98d77ea57fe9c4c870f46bea90c69f0a9b18e1db5de5e0b0caa23542a3ce4d0c8586224e1525d42ecfb36487f451993b9d9314136a3edbc63956088897e23856df46d5b29f9aecd657fca4586eb5882490db9f4def8b4c7972bbd05e8b5a3c2f3f16d0ec61a12c25e18e48fe525b379de392d7a1f5c304a823675a20899e4da10c90833216b4b3713915a6e44e7f516beafdff21949dfa90d2f5a5be5043d5f7b3d01701082126a13b565a58a8fdade123960d7ba7dc59c70090d2d46e5f15c569a5afa2bb851369b91d6b3e2974310c4aadd88d80a399507e8a45d1dc5e4f42e536ab46c957667cae5b7b381eb7124bbddfa7729452422d4a061f5be24b14262d100000000000000006f0527e24fed6621d4cd89fe0f00668b5b22361c68440e529ab433f41bee48b7",
   "bls12-381-shake-256":
-    "00000000000000020000000000000150b5989470e4c9d90e2683f601cf74b13b7dc3f741401be9d95efc049cbfcaa50777d0e0f7f81bb8f96faa1a2703130782a6b641c21fa6b67bd1a70f2f3b1b32084ee9b86655b5e70e6e5ce08e1f0301ee27b4cb77545d9da74e4ae2a7d7c9195fa7ffa61d9843086a700d9e70c57e8078dbd079e5ed27d64588c310b0294e8aa85f23c0f2e38840cf466a2225fb70bdb25d065e2caf84c337c3cd5a15ae012ebfc2d69f6b50cdbf38a2d15eff1389914c35eee52a8caea2daeba43d45971d0612b05c036d8ce5c0a2178312a4a0187f85080e672654dd9c2d54343ce93ad096ef7c29fb0ebbd303d8099eb0ddd9bc54b548b7fa080c65700654fa9118a90c91749c24999403bc6f7ae5947f5b670a58c20da8c980e6137f975c520afe862d36886223a53bbbc52478fb97d079e57d92130fd9090bdb8e3569f8f9f117a899006ec2fe0734bd56a97f017d9a85db1abd8a0000000000000150b977ff1644357b27bd3961c3d28c7bfdb8d9a65050334550f701b7b125c166c01b65520b73266709f7db0bfbc781a99caa9fd5edab5cefe8cb8a2b220ef199f43309000475067df9ba757f87f6600d22559cc3d5c6cc0231a8d872849be7753ba6623bee092625b73c0aacd6bb64222bf34786356ecbd29774d3e8aa7c851096fa7cea43fae7981838be1dce8ac9616b0660b0b390fc6125e1c45496e1331139d2ef63b6a792f5a33c6bef4eb845e48f31babf90fa499f5a0ee6cc97c6478f78469b2f022193a46dea50f4ea5a587f686b93040195558c7628809664d359d944327c36471f0594c1c2ec8fa0aa8e40721a0766bab918df29d88c832876f28dbcd7e64939c73ec14a3912c086d079e1790fd9090bdb8e3569f8f9f117a899006ec2fe0734bd56a97f017d9a85db1abd8a6e08bb461c707d1671f5d234821c428ba802d89cc6a3085ff71e709de3fe5eb9628b8d5122f6d126cca8c0722481c5befd3d3021b752677445764d0e4b581ba3",
+    "00000000000000020000000000000150ae34053b01a3f18621651dd8dce6af39c1dfae57c6281a77e276e9ec52a472b9155269c14835ed0d794abb4618262bf28a6a7cfcc82de312f149de2490c73eb24a8d1b52cd739b433b41688db7557e23ebe88183ec27ef1c51a2a93c381384c1a87d67f92abca99b9df88da3bb15423d38874cb12ab8d24baf500cdd44df1005de02f2221679dc709f7f9016d1c5930d10448ae6e7e5bac414275f995fae10d24dbd531585433fbb21757e2cd79ef9e2411d289f15a5820576923c594488c7379c447d02058fef830200f8c22d2400602727a14647300ce11559e7baa813de383fd3ed68c1b43892a26899446684fc3a503d2ea7de1d95a88bee727d88cc0375dac0dca8da9c5fc16b71ca74e532ba6d545e80365b597b2376391300be90c07fee48ef8664e9f9a7043747d63993fd370a25ec97a7ce21656e60f0352406933bf446e7e41d384d004bf3562159a166070000000000000150b17ddd36a2b4b46b6304ea5a843e084c91eb6cd02dcaaf5389b4013bb86dcc54779eca46c0d83064512d6f25047e00fc80aab394c495a9a6bc559cb4f764d4b808f80c990fe2931a63abe2950238cecb793891013eddd021e9ddcdcbf31632a8b6c230d689170f9e71dad035c1ea371d622eb9c8b31e86cda05dad3847a1e1d2e7a3b39b2a7b7eaac2e3e5663c437b9e4c721447185d333306c3bc6de1c896f082e202d5a865c7c25be8719bbd5956e13d73e7cf28655bfdbf040a26b36d9bbd67870b64087b23691ea814e6b7f7342f4dd2e34be959cb3b0d3dd6e9ec942e9c0881e8087e46c65de69ba88e0b1fb87f28ee8741895adc42f2c0c92fc7c5dbe961c0409e9926ce326bfd74d87c0131eb0a25ec97a7ce21656e60f0352406933bf446e7e41d384d004bf3562159a1660701ea641d1156be0d4f77d107ead041da6e7f38dcba8983752e96510d768bb6c90000000000000000208c8acef9aae574af8cb4a92241f4ae394d31a3aea9974298ea769155836783",
 };
 
 // ---------------------------------------------------------------------------
@@ -213,6 +213,7 @@ function replicateChallenge(
       t.appendNumber("ref_message_index", ref.messageIndex);
     }
   }
+  t.appendNumber("range_predicate_count", 0);
   return t.challenge("presentation_challenge");
 }
 
@@ -258,7 +259,7 @@ function manualPresentation(
     parts: state,
   }));
   const challenge = replicateChallenge(suite, ph, contexts, constraints);
-  return { proofs: states.map((state) => proofFinalize(state, challenge)), challenge };
+  return { proofs: states.map((state) => proofFinalize(state, challenge)), rangeProofs: [], challenge };
 }
 
 const mod = (a: bigint, m: bigint): bigint => ((a % m) + m) % m;
@@ -283,7 +284,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
   describe("linked presentation, end to end", () => {
     const scenario = linkedScenario(suite);
     const presentation = provePresentation(
-      suite, scenario.statements, scenario.constraints, scenario.ph,
+      suite, scenario.statements, { equalities: scenario.constraints }, scenario.ph,
     );
 
     it("both credentials verify for the holder before presenting", () => {
@@ -299,7 +300,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
 
     it("proves and verifies two credentials linked by a hidden link secret", () => {
       expect(
-        verifyPresentation(suite, presentation, scenario.descriptors, scenario.constraints, scenario.ph),
+        verifyPresentation(suite, presentation, scenario.descriptors, { equalities: scenario.constraints }, scenario.ph),
       ).toBe(true);
     });
 
@@ -307,7 +308,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
       const octets = presentationToOctets(suite, presentation);
       const parsed = octetsToPresentation(suite, octets);
       expect(
-        verifyPresentation(suite, parsed, scenario.descriptors, scenario.constraints, scenario.ph),
+        verifyPresentation(suite, parsed, scenario.descriptors, { equalities: scenario.constraints }, scenario.ph),
       ).toBe(true);
       expect(bytesToHex(presentationToOctets(suite, parsed))).toBe(bytesToHex(octets));
     });
@@ -323,9 +324,9 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
 
     it("single statement without constraints verifies here — but is NOT a spec BBS proof", () => {
       const s = scenario.statements[0]!;
-      const single = provePresentation(suite, [s], [], scenario.ph);
+      const single = provePresentation(suite, [s], {}, scenario.ph);
       expect(
-        verifyPresentation(suite, single, [scenario.descriptors[0]!], [], scenario.ph),
+        verifyPresentation(suite, single, [scenario.descriptors[0]!], {}, scenario.ph),
       ).toBe(true);
       // Same proof handed to the spec verifier fails: the challenge comes from this
       // package's transcript, not ProofChallengeCalculate. Deliberate — see presentation.ts.
@@ -362,8 +363,8 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
         disclosedMessages: new Map([[1, msgs[1]!]]),
         messageDisclosures: disclosures, issuerKnownCount: 3,
       };
-      const p = provePresentation(suite, [statement], constraints, scenario.ph);
-      expect(verifyPresentation(suite, p, [descriptor], constraints, scenario.ph)).toBe(true);
+      const p = provePresentation(suite, [statement], { equalities: constraints }, scenario.ph);
+      expect(verifyPresentation(suite, p, [descriptor], { equalities: constraints }, scenario.ph)).toBe(true);
     });
   });
 
@@ -371,7 +372,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
     it("presentation bytes are stable across releases", () => {
       const scenario = linkedScenario(suite, { deterministic: true });
       const presentation = provePresentation(
-        suite, scenario.statements, scenario.constraints, scenario.ph,
+        suite, scenario.statements, { equalities: scenario.constraints }, scenario.ph,
         {
           randomScalars: (s) =>
             mockRandomScalars(suite, FIXTURE_SEED, `${PROTOCOL_ID} GOLDEN STATEMENT ${s} DST`),
@@ -382,7 +383,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
       const hex = bytesToHex(presentationToOctets(suite, presentation));
       expect(hex).toBe(GOLDEN[dir]);
       expect(
-        verifyPresentation(suite, presentation, scenario.descriptors, scenario.constraints, scenario.ph),
+        verifyPresentation(suite, presentation, scenario.descriptors, { equalities: scenario.constraints }, scenario.ph),
       ).toBe(true);
     });
   });
@@ -390,7 +391,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
   describe("fails closed", () => {
     const scenario = linkedScenario(suite);
     const presentation = provePresentation(
-      suite, scenario.statements, scenario.constraints, scenario.ph,
+      suite, scenario.statements, { equalities: scenario.constraints }, scenario.ph,
     );
     const verifyWith = (mutate: {
       presentation?: Presentation;
@@ -402,7 +403,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
         suite,
         mutate.presentation ?? presentation,
         mutate.descriptors ?? scenario.descriptors,
-        mutate.constraints ?? scenario.constraints,
+        { equalities: mutate.constraints ?? scenario.constraints },
         mutate.ph ?? scenario.ph,
       );
 
@@ -466,7 +467,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
         try {
           ok = verifyPresentation(
             suite, octetsToPresentation(suite, tampered),
-            scenario.descriptors, scenario.constraints, scenario.ph,
+            scenario.descriptors, { equalities: scenario.constraints }, scenario.ph,
           );
         } catch {
           ok = false;
@@ -486,12 +487,15 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
         sB!.messages, sB!.committedMessages ?? [], sB!.secretProverBlind ?? 0n, sB!.messageDisclosures,
       );
       // Distinct challenges cannot even be represented consistently…
-      expect(verifyWith({ presentation: { proofs: [pA, pB], challenge: pA.challenge } })).toBe(false);
+      expect(
+        verifyWith({ presentation: { proofs: [pA, pB], rangeProofs: [], challenge: pA.challenge } }),
+      ).toBe(false);
       // …and forging the challenge field breaks each proof's own verification equation.
       expect(
         verifyWith({
           presentation: {
             proofs: [pA, { ...pB, challenge: pA.challenge }],
+            rangeProofs: [],
             challenge: pA.challenge,
           },
         }),
@@ -500,7 +504,11 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
 
     it("serialization refuses a presentation with inconsistent challenges", () => {
       const [pA, pB] = presentation.proofs;
-      const forged = { proofs: [pA!, { ...pB!, challenge: 42n }], challenge: presentation.challenge };
+      const forged = {
+        proofs: [pA!, { ...pB!, challenge: 42n }],
+        rangeProofs: [],
+        challenge: presentation.challenge,
+      };
       expect(() => presentationToOctets(suite, forged)).toThrow(/challenge/);
     });
 
@@ -534,7 +542,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
     it("prover refuses unequal witnesses", () => {
       const bad = linkedScenario(suite, { linkSecretB: utf8("a different secret") });
       expect(() =>
-        provePresentation(suite, bad.statements, bad.constraints, bad.ph),
+        provePresentation(suite, bad.statements, { equalities: bad.constraints }, bad.ph),
       ).toThrow(/witnesses are not equal/);
     });
 
@@ -542,7 +550,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
       expect(() =>
         provePresentation(
           suite, scenario.statements,
-          [[{ statement: 0, messageIndex: 0 }, { statement: 1, messageIndex: 1 }]],
+          { equalities: [[{ statement: 0, messageIndex: 0 }, { statement: 1, messageIndex: 1 }]] },
           scenario.ph,
         ),
       ).toThrow(/disclosed/);
@@ -550,12 +558,12 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
 
     it("prover refuses single-reference and overlapping constraint classes", () => {
       expect(() =>
-        provePresentation(suite, scenario.statements, [[{ statement: 0, messageIndex: 3 }]], scenario.ph),
+        provePresentation(suite, scenario.statements, { equalities: [[{ statement: 0, messageIndex: 3 }]] }, scenario.ph),
       ).toThrow(/two references/);
       expect(() =>
         provePresentation(
           suite, scenario.statements,
-          [...scenario.constraints, ...scenario.constraints],
+          { equalities: [...scenario.constraints, ...scenario.constraints] },
           scenario.ph,
         ),
       ).toThrow(/more than one class/);
@@ -565,14 +573,14 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
       expect(() =>
         provePresentation(
           suite, scenario.statements,
-          [[{ statement: 5, messageIndex: 0 }, { statement: 1, messageIndex: 1 }]],
+          { equalities: [[{ statement: 5, messageIndex: 0 }, { statement: 1, messageIndex: 1 }]] },
           scenario.ph,
         ),
       ).toThrow(/statement index/);
       expect(() =>
         provePresentation(
           suite, scenario.statements,
-          [[{ statement: 0, messageIndex: 9 }, { statement: 1, messageIndex: 1 }]],
+          { equalities: [[{ statement: 0, messageIndex: 9 }, { statement: 1, messageIndex: 1 }]] },
           scenario.ph,
         ),
       ).toThrow(/out of range/);
@@ -580,7 +588,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
 
     it("prover refuses statements that drew identical randomness", () => {
       expect(() =>
-        provePresentation(suite, scenario.statements, scenario.constraints, scenario.ph, {
+        provePresentation(suite, scenario.statements, { equalities: scenario.constraints }, scenario.ph, {
           // The realistic misuse: one stateless mock reused for every statement.
           randomScalars: () => mockRandomScalars(suite, FIXTURE_SEED, "REUSED DST"),
         }),
@@ -588,7 +596,7 @@ describe.each(Object.entries(SUITE_BY_FIXTURE_DIR))("%s", (dir, suiteId) => {
     });
 
     it("prover refuses an empty presentation", () => {
-      expect(() => provePresentation(suite, [], [], scenario.ph)).toThrow(/no statements/);
+      expect(() => provePresentation(suite, [], {}, scenario.ph)).toThrow(/no statements/);
     });
   });
 

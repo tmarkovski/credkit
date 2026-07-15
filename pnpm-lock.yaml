@@ -33,6 +33,22 @@ importers:
       '@credkit/bbs':
         specifier: workspace:*
         version: link:../bbs
+      '@credkit/range':
+        specifier: workspace:*
+        version: link:../range
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+
+  packages/range:
+    dependencies:
+      '@credkit/bbs':
+        specifier: workspace:*
+        version: link:../bbs
+      '@noble/curves':
+        specifier: ^2.2.0
+        version: 2.2.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

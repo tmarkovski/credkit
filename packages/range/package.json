@@ -1,9 +1,9 @@
 {
-  "name": "@credkit/proofs",
+  "name": "@credkit/range",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Composite proof framework over @credkit/bbs: multi-statement presentations, one merged Fiat-Shamir challenge, witness equality (link secrets), range predicates (via @credkit/range).",
+  "description": "CCS (Camenisch-Chaabouni-shelat) set-membership range proofs over BLS12-381: Boneh-Boyen signature alphabets, digit decomposition, three-phase sigma protocol for merged Fiat-Shamir challenges.",
   "main": "./src/index.ts",
   "scripts": {
     "test": "vitest run",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@credkit/bbs": "workspace:*",
-    "@credkit/range": "workspace:*"
+    "@noble/curves": "^2.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

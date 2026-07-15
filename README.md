@@ -30,8 +30,10 @@ See [docs/FINDINGS.md](docs/FINDINGS.md) for how that diagnosis turned into this
 
 ## Status
 
-Nothing is implemented. `packages/bbs` is scaffolded with the API surface, a working fixture
-harness, and failing tests that define done.
+Three of the four layers are implemented and green (241 tests, both ciphersuites):
+`packages/bbs` passes all 33 vendored spec vectors; `packages/proofs` does linked
+presentations (the link secret) under one merged challenge; `packages/range` does CCS age/range
+predicates over hidden numeric messages. The JSON-LD cryptosuite is not started.
 
 **Start at [docs/BRIEF.md](docs/BRIEF.md).**
 
@@ -39,9 +41,9 @@ harness, and failing tests that define done.
 
 ```
 packages/
-  bbs/           IETF BBS core + blind issuance      <- current work
-  proofs/        composite proof framework           (not started)
-  range/         CCS set-membership range proofs     (not started)
+  bbs/           IETF BBS core + blind issuance      (built — fixture-pinned)
+  proofs/        composite proof framework           (built — FINDINGS §11)
+  range/         CCS set-membership range proofs     (built — FINDINGS §12)
   cryptosuite/   JSON-LD suite                       (not started)
 docs/
   BRIEF.md       start here — what to build, in what order, how to verify

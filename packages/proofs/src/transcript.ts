@@ -24,7 +24,10 @@ import {
   type Scalar,
 } from "@credkit/bbs";
 
-export const PROTOCOL_ID = "CREDKIT-PROOFS-V1";
+// V2: range predicates joined the transcript and the wire format (a predicate section is
+// absorbed and serialized even when empty). V1 never shipped outside this repo, but the
+// golden-vector rule is absolute — layout changes bump the version, they don't edit hex.
+export const PROTOCOL_ID = "CREDKIT-PROOFS-V2";
 
 export class Transcript {
   private readonly pieces: Uint8Array[] = [];

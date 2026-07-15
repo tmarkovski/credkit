@@ -119,6 +119,8 @@ Not your problem yet, but it explains the API constraints above:
 - **`packages/proofs`** — composite framework. Statements + `WitnessEquality`, one merged
   Fiat-Shamir challenge over every statement, shared blindings for equal witnesses. This is
   where the link secret lands, and where the real risk lives. It has no spec and no fixtures.
-- **`packages/range`** — CCS. Links via `PoKBBSSignature → PedersenCommitment(shared blinding) →
-  RangeProof`, so the backend stays swappable (§7).
+  *(Built — see FINDINGS §11.)*
+- **`packages/range`** — CCS digit proofs, bound to a hidden BBS message by sharing its
+  Schnorr blinding under the merged challenge — the Pedersen indirection §7 planned turned
+  out to be unnecessary for a sigma-protocol backend (FINDINGS §12). *(Built.)*
 - **`packages/cryptosuite`** — the JSON-LD suite. Bespoke; no interop pretense.

@@ -33,11 +33,13 @@ import {
   finalizeSign,
   g1FromBytes,
   g2FromBytes,
+  messageToScalar,
   messagesToScalars,
   mul,
   sumOfProducts,
   type G1Point,
   type G2Point,
+  type MessageInput,
   type Proof,
   type ProofGenOptions,
   type Scalar,
@@ -177,7 +179,7 @@ export function verifyCommitment(suite: Ciphersuite, commitmentWithProof: Uint8A
  */
 export function commit(
   suite: Ciphersuite,
-  committedMessages: readonly Uint8Array[],
+  committedMessages: readonly MessageInput[],
   options: CommitOptions = {},
 ): CommitmentWithProof {
   const apiId = suite.blindApiId;
@@ -222,7 +224,7 @@ export function blindSign(
   publicKey: G2Point,
   commitmentWithProof: Uint8Array,
   header: Uint8Array,
-  signerMessages: readonly Uint8Array[],
+  signerMessages: readonly MessageInput[],
   options: SignOptions = {},
 ): Signature {
   const apiId = suite.blindApiId;
@@ -260,8 +262,8 @@ export function blindVerify(
   publicKey: G2Point,
   signature: Signature,
   header: Uint8Array,
-  signerMessages: readonly Uint8Array[],
-  committedMessages: readonly Uint8Array[],
+  signerMessages: readonly MessageInput[],
+  committedMessages: readonly MessageInput[],
   secretProverBlind: Scalar,
 ): boolean {
   try {
@@ -341,8 +343,8 @@ export interface BlindProofSetup {
 
 export function blindProofSetup(
   suite: Ciphersuite,
-  messages: readonly Uint8Array[],
-  committedMessages: readonly Uint8Array[],
+  messages: readonly MessageInput[],
+  committedMessages: readonly MessageInput[],
   secretProverBlind: Scalar,
   messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
 ): BlindProofSetup {
@@ -382,7 +384,7 @@ export interface BlindVerifySetup {
 /** Throws on inconsistent input; callers that must fail closed catch and return false. */
 export function blindVerifySetup(
   suite: Ciphersuite,
-  disclosedMessages: ReadonlyMap<number, Uint8Array>,
+  disclosedMessages: ReadonlyMap<number, MessageInput>,
   messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
   issuerKnownMessagesNo: number,
 ): BlindVerifySetup {
@@ -408,12 +410,11 @@ export function blindVerifySetup(
     ...createGeneratorPoints(suite, issuerKnownMessagesNo + 1, apiId),
     ...createGeneratorPoints(suite, total - issuerKnownMessagesNo + 1, `BLIND_${apiId}`),
   ];
-  const dst = utf8(`${apiId}MAP_MSG_TO_SCALAR_AS_HASH_`);
   const disclosedScalars = new Map<number, Scalar>();
   for (const i of disclosed) {
     disclosedScalars.set(
       proofMessageIndex(i, issuerKnownMessagesNo),
-      suite.hashToScalar(disclosedMessages.get(i)!, dst),
+      messageToScalar(suite, disclosedMessages.get(i)!, apiId),
     );
   }
   const undisclosedIndexes: number[] = [];
@@ -440,8 +441,8 @@ export function blindProofGen(
   signature: Signature,
   header: Uint8Array,
   presentationHeader: Uint8Array,
-  messages: readonly Uint8Array[],
-  committedMessages: readonly Uint8Array[],
+  messages: readonly MessageInput[],
+  committedMessages: readonly MessageInput[],
   secretProverBlind: Scalar,
   messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
   options: ProofGenOptions = {},
@@ -491,7 +492,7 @@ export function blindProofVerify(
   proof: Proof,
   header: Uint8Array,
   presentationHeader: Uint8Array,
-  disclosedMessages: ReadonlyMap<number, Uint8Array>,
+  disclosedMessages: ReadonlyMap<number, MessageInput>,
   messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
   issuerKnownMessagesNo: number,
 ): boolean {

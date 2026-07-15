@@ -277,3 +277,74 @@ challenge`: a per-statement challenge mismatch is unrepresentable on the wire, a
 reuses `octetsToProof` for full point/scalar validation. `messageBlindings` never serializes;
 presentation proofs re-key them to message space (same convention as `blindProofGen`) so a
 future `packages/range` statement can reuse a blinding under the same merged challenge.
+
+## 12. packages/range design record (2026-07-15, CCS range-proof pass)
+
+CCS as planned in §6 — but the composition diverges from §7's plan, deliberately. Recorded by
+the agent that implemented it; the golden vectors in `packages/range` and
+`packages/proofs/test/predicates.test.ts` pin the results.
+
+**We dropped the Pedersen indirection §7 said to adopt.** §7's
+`PoKBBSSignature → PedersenCommitment(shared blinding) → RangeProof` is how anoncreds-v2-rs
+decouples its range backend, and it is the right interface for a backend that is NOT a sigma
+protocol — Bulletproofs runs its own recursive challenge schedule, so the only way to bind it
+is through a commitment both sides can see. CCS has no such problem: every digit proof is a
+plain sigma protocol, so it composes under the merged challenge directly. The digit proofs'
+aggregate response `Σ u^i d^_i = (Σ u^i d~_i) + c·value` IS a Schnorr response for the value;
+set the aggregate blinding to the BBS message's blinding (negated for upper bounds) and the
+verifier checks one linear relation — `σ == m^ - c·bound` or `σ == c·bound - m^`. Rewinding
+extracts `Σ u^i d_i = value ± bound` with every digit alphabet-bound. A Pedersen commitment in
+the middle would add a point, a blinding, an opening proof, and zero soundness. The swappable
+"backend interface" §7 was after is really the merged transcript plus a response-scalar
+relation; if Bulletproofs ever lands in TS, a Pedersen-opening statement type gets added THEN,
+alongside CCS, not underneath it.
+
+**Numeric messages are a credkit extension to @credkit/bbs.** Range proofs need arithmetic on
+the signed value, and `messages_to_scalars` hashes — so `MessageInput = Uint8Array | bigint`,
+where a bigint IS its scalar (validated `0 <= v < r`). AnonCreds does the same thing with its
+attribute encoding. The guarantee a predicate gives is MODULAR: `(value - bound) mod r ∈
+[0, base^digits)`. It reads as the natural >=/<= only because applications encode honest
+values well below r — dob as days since 1900 (§6's encoding, dodging the predecessor's
+pre-1970 u32 bug), integers < 2^64 generally. A predicate pointed at a hash-mapped message
+can't accidentally verify (the hash would have to land in a ~2^-239 window), and the prover
+refuses to build one (`not numeric`).
+
+**`base^digits <= 2^64` is enforced on BOTH sides, and it is soundness, not hygiene.** The
+one-sided trick from §6 — a negative difference wraps to ~2^255 and cannot decompose — only
+holds while `base^digits` is far below r. A verifier that accepted `digits` large enough for
+`base^digits ≈ r` would have proven nothing. `rangeVerifyInit` throws past the ceiling.
+
+**Identity V is rejected, and must be.** `V_i = A_{d_i}^{v_i}` blinds the alphabet signature;
+`V = Identity` satisfies the digit pairing relation for ANY claimed digit with `v = 0`,
+voiding the alphabet bound entirely. `rangeVerifyInit` and `octetsToRangeProof` both refuse
+it. (Same reason the prover draws `v_i != 0`: V must be uniform in G1*, not G1.)
+
+**The alphabet is the verifier's own; per-prover alphabets are the linkability trap.** The
+"trusted setup" story from §6 held up: `createRangeParams` is the verifier signing {0..u-1}
+with a throwaway Boneh–Boyen key, and a dishonest alphabet only fools its owner.
+`verifyRangeParams` catches malformed params (run it when importing third-party params), but
+it CANNOT catch a verifier handing each prover a distinct well-formed alphabet as a tracking
+tag — provers should fetch params from the same published location as everyone else. Recorded
+in `packages/range/src/params.ts`.
+
+**Range proofs have no standalone verify — deliberately.** A CCS proof binds digits to a
+value only through the aggregate-response relation against some OTHER statement under the
+SAME challenge. A self-contained `rangeVerify` would invite exactly the unsound composition
+the merged challenge exists to prevent. The package exposes init/finalize/verifyInit;
+`packages/proofs` owns the binding (`RangePredicate`), and its tests include a manual prover
+running perfectly valid digit proofs over the WRONG value — caught only by the aggregate
+check, which is the point.
+
+**PROTOCOL_ID bumped to CREDKIT-PROOFS-V2.** Predicates joined the transcript (a
+`range_predicate_count` section is absorbed even when empty) and the wire format (`N || bbs
+proofs || K || range proofs || challenge`). V1 never shipped, but §11's golden-vector rule is
+worth keeping absolute: layout changes bump the version, they never edit hex. GT elements are
+absorbed via noble's Fp12 serialization (576 octets) — a noble upgrade that changed that
+layout would go red in the golden vectors first, same early-warning design as §10's
+hash-to-curve pin.
+
+**Cost check against §6's prediction.** "Zero help from the reference implementation" was
+right in the small: every line of `packages/range` is ours. But the §6 estimate of the shape
+held exactly — base 16, 4 digits, a 16-signature alphabet, one pairing per digit to prove,
+two per digit to verify, and the whole thing landed in one pass because the three-phase seam
+built for witness equality (§11) was already the right seam for predicates.

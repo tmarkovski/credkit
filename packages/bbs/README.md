@@ -27,6 +27,10 @@ implementation pass discovered (including two upstream fixture defects in the SH
   (`ciphersuite_id || "BLIND_H2G_HM2S_"`). One wire format across the package: a plain
   signature is `blindSign` with no commitment, and both paths verify identically. This is
   what the spec's "no commitment" vectors exercise. It is NOT the base BBS interface.
+- Messages are `MessageInput = Uint8Array | bigint`. Byte strings hash per the spec; a bigint
+  IS its scalar (a credkit extension, NOT IETF — validated to `[0, r)`). Numeric messages
+  exist so `packages/range` predicates can do arithmetic on hidden values (dob as days since
+  1900, etc.); see docs/FINDINGS.md §12 and `test/numeric.test.ts`.
 - `Proof.messageBlindings` surfaces each hidden message's Schnorr blinding (keyed by message
   index) for `packages/proofs` to share across statements — the link-secret mechanic. It is
   never serialized; `proofToOctets` carries only the wire fields.
@@ -48,7 +52,7 @@ implementation pass discovered (including two upstream fixture defects in the SH
 
 ```bash
 pnpm install
-pnpm test          # 117 tests, all green
+pnpm test          # 131 tests, all green
 pnpm typecheck
 ```
 
