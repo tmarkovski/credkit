@@ -21,6 +21,17 @@ convenience, not authoritative.
 `draft-irtf-cfrg-bbs-signatures` (currently -10) plus tooling. The base scheme our blind
 extension sits on. Also ships fixtures.
 
+### `w3c/vc-di-bbs` — the W3C cryptosuite (structure donor, not a compliance target)
+[Data Integrity BBS Cryptosuites v1.0](https://www.w3.org/TR/vc-di-bbs/), **Candidate
+Recommendation Draft, 7 April 2026** — no longer the 2023 WD the incumbent stack implements.
+`packages/cryptosuite` adopts its document pipeline (RDF canonicalization, HMAC label
+shuffle, mandatory pointers folded into the BBS header, CBOR/multibase envelopes) and
+replaces its proof layer; design record in FINDINGS §14. Four `featureOption` modes;
+`anonymous_holder_binding` is our blind-issuance flow with a per-credential secret,
+`pseudonym` is verifier-scoped linkability — a different question than our cross-issuer
+equality. **Still no predicates, no multi-credential presentations, no cross-credential
+equality** — the gap this repo fills. CR status will rot; re-check before shipping.
+
 ## Implementations
 
 ### `@digitalbazaar/bbs-signatures@3.1.0` — start here

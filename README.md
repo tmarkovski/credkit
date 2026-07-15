@@ -34,7 +34,7 @@ Three of the four layers are implemented and green (279 tests, both ciphersuites
 `packages/bbs` passes all 33 vendored spec vectors; `packages/proofs` does linked
 presentations (the link secret) under one merged challenge; `packages/range` does CCS range
 and set-membership predicates over hidden numeric messages (age over N, state in {FL, RI}).
-The JSON-LD cryptosuite is not started.
+The JSON-LD cryptosuite is not started; its design is recorded in FINDINGS §14.
 
 **Start at [docs/BRIEF.md](docs/BRIEF.md).**
 

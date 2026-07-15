@@ -391,3 +391,153 @@ ZIP-inside-a-state — two one-sided range predicates over a hidden ZIP whose ov
 intersects to exactly Florida's 32000..34999 block, proving the state while hiding the city.
 The capstone test runs all three claim kinds (link-secret equality, age range, state
 membership) in one presentation under one challenge.
+
+## 14. packages/cryptosuite: the numeric seam (2026-07-15, design record — written before code)
+
+Unlike §10–§13, this section precedes its implementation. The precedent is §7→§12: §7 planned
+the Pedersen indirection, §12 dropped it with evidence and recorded why. Treat this section
+the same way — if the code disagrees, record the divergence here, don't silently drift. It
+settles the question that gates the cryptosuite: how a numeric attribute survives quad
+hashing so §12's predicates can reach it. Spec facts verified 2026-07-15; the status ones
+will rot.
+
+**vc-di-bbs is a Candidate Recommendation Draft now (7 April 2026), and it grew half of §8.**
+No longer the 2023 WD the incumbent stack implements (REFERENCES.md has the entry).
+`featureOption` takes exactly `baseline`, `anonymous_holder_binding`, `pseudonym`,
+`holder_binding_pseudonym`. `anonymous_holder_binding` is structurally our issuance: the
+holder generates a `holder_secret`, sends a Blind BBS commitment-with-proof, the issuer
+blind-signs, the holder keeps `secret_prover_blind` — the `commit`/`blindSign`/
+`secretProverBlind` flow the §13 capstone test already runs, which also gives the two-round
+issuance handshake a standards-shaped home. Two deltas from §8: their secret is
+per-credential with no cross-credential ambition, ours is one-for-life across issuers; and
+their `pseudonym` mode (`nym_secret` + `nym_domain`) answers a different linkability question
+than WitnessEquality — verifier-scoped, verifier-enforced "same holder returned here" versus
+holder-elected "these two credentials are mine" across issuers. Complementary, not competing;
+pseudonyms do not obsolete the equality mechanic. Nothing in the CR does predicates, proofs
+about undisclosed values, multi-credential presentations, or cross-credential equality —
+disclose-or-hide at whole-statement granularity. The missing middle is still missing.
+
+**Adopt the document pipeline, replace the proof layer.** Adopted wholesale: RDF Dataset
+Canonicalization; a per-base-proof HMAC key with the shuffled label map
+(`createShuffledIdLabelMapFunction` — labels are sorted-index positions of HMAC digests, a
+per-credential random permutation); `mandatoryPointers` with mandatory statements folded into
+the header (`bbsHeader = proofHash || mandatoryHash`); one BBS message per non-mandatory
+N-Quad (UTF-8, then hashed to a scalar); CBOR-then-multibase proof-value envelopes with
+mode-distinguishing header bytes. Replaced: every derived proof is a CREDKIT-PROOFS
+presentation (§11's wire), including plain selective disclosure with no predicates — §11's
+uniform-N=1 rule applied one layer up; a bbs-2023-shaped special case for the predicate-free
+path is exactly the transcript fork §11 refused. This costs zero new interop: §11 already
+made presentation challenges non-spec. Own cryptosuite id, own @context, own proof-value
+header bytes disjoint from the spec's `0xd9 0x5d 0x02`–`0x09` range so a credkit proof value
+can never parse as bbs-2023.
+
+**The numeric seam, stated precisely.** §12's predicates need the message scalar to BE the
+value (`MessageInput = bigint`); bbs-2023 messages are hashes of N-Quad strings, and no
+arithmetic survives a hash. Getting a bigint into a slot is trivial. The problem is
+convincing the verifier that slot k holds `encode(encoderId, value at property P)` from
+public, tamper-evident data — with no per-credential correlation handle. Prover-asserted slot
+meaning lets a prover aim `greaterOrEqual` at `postalCode` and call it an age proof; a
+disclosed per-credential tag is the Poseidon-commitment failure again.
+
+**The design: a declared numeric block, twin to the quads, bound as a third header segment.**
+Non-mandatory quads stay exactly bbs-2023 messages — hashed, disclosable, revealed documents
+stay valid JSON-LD. After them the issuer appends one bigint message per entry of
+`numericDecl = [(jsonPointer, encoderId), …]`, in declared order: message space
+`[quads 0..n-1][twins n..n+k-1]`, all issuer-known, so `L = n+k` and the blind slot at L is
+untouched. Binding:
+
+    bbsHeader = proofHash || mandatoryHash || H(serialize(numericDecl))
+
+`serialize` uses the §11 transcript discipline (labeled, length-prefixed), and the segment is
+present even when the declaration is empty — §12's absorb-even-when-empty precedent, one code
+path. The declaration travels verbatim as a CBOR component of both proof values (holder and
+verifier both need it to rebuild the header and read slot meanings). A prover lying about
+slot meaning fails header reconstruction: the binding is the signature itself, the same chain
+that already protects mandatory content, no new mechanism. The header is opaque bytes to
+@credkit/bbs; nothing below this layer changes.
+
+**JSON pointers, not property IRIs; order declared, not canonicalized.** Pointers are the
+spec's own selection idiom (`mandatoryPointers`), and they disambiguate
+two-subjects-one-predicate — a guardian credential carrying the holder's and the child's
+`birthDate` is one property IRI but two pointers; any sorted-property-IRI convention is
+ambiguous there. Order-as-declared-and-bound is the house principle (§11 constraint order,
+§13 member order). `encoderId` is explicit per pointer because the XSD datatype
+underdetermines the encoding (epoch, bias, and scale are choices) and cross-issuer equality
+needs encoder agreement.
+
+**The declaration is proof metadata and does not live in the document.** "birthDate is
+numerically provable" is cryptosuite configuration, not a claim about the subject: nothing
+extra appears in the revealed document, and document canonicalization is untouched — no
+circularity between a declaration statement and the indexes it would shift. The
+bbs-2023-native alternative — declaration in proof options, bound via `proofHash` — was
+rejected for one concrete trap: proof options are RDF-canonicalized, and a JSON-LD array term
+is an unordered set unless the term declares `@container: @list`, so pointer order would
+silently not survive canonicalization. An ordering bug that fires only with two or more
+numeric properties and an unlucky permutation is exactly the invisible class the byte-exact
+header segment removes.
+
+**Rejected — value-position split.** Splitting the numeric quad into a placeholder quad plus
+a value message forces the prover to disclose the placeholder to establish meaning. Labels
+are per-credential random (the HMAC shuffle), so the disclosed (label, property) pair is a
+stable random tag across that credential's presentations: a correlation handle with zero
+informational payload for the verifier — the Poseidon-commitment bug in a new costume. It
+also leaves `birthDate: ""` in the revealed document, which is no longer a valid credential.
+
+**Rejected — value as the quad's own scalar (no twin).** Emitting `encode(literal)` as the
+numeric quad's scalar saves k generators but un-signs the quad's subject and predicate for
+those slots: the scalar binds only the value, so disclosure verification degrades from
+"recompute hash, compare bytes" to verifier-side validation that the disclosed quad matches
+the declared pointer — a forgery surface where the twin design has none. The auto-detect
+variant (any literal with a numeric XSD datatype gets value-encoding) is the same thing made
+implicit. Fails fail-closed.
+
+**Rejected — schema-registry layout, and proven consistency.** Slot layout as a pure function
+of credential type needs a registry and fights JSON-LD's shape flexibility; the
+per-credential declaration subsumes it. Proving quad-slot/twin-slot consistency in ZK is
+commit-and-prove — the SNARK §4 already killed. Consistency is attested, not proven: the
+issuer signs both representations, and an issuer that lies in the twin could as easily sign a
+false birthDate in the quad. No new trust assumption — and when the quad IS disclosed, the
+verifier recomputes the projection and cross-checks for free.
+
+**Twins are always-hidden by construction; every claim kind reaches them.** Value disclosure
+happens by disclosing the quad — the twin never serializes as a disclosed message; the
+cryptosuite pins HIDE for the block, the same construction-level treatment §11 gives the
+prover-blind slot. `RangePredicate`, `SetMembershipPredicate`, and `WitnessEquality` all
+point at twins. The last is a free upgrade: same-birthdate-across-two-credentials without
+disclosing it — the link-secret mechanic aimed at values — provided both issuers declared the
+same `encoderId`. That cross-issuer requirement is the argument for a small shared encoder
+registry over per-deployment improvisation.
+
+**The encoder registry is where the bugs will live.** §12's guarantee is modular; every
+encoder must land honest values far below 2^64 (the predicate ceiling is
+`base^digits <= 2^64`). Initial set — deliberately minimal, the pinned use cases (age, FIPS,
+ZIP) need exactly these:
+
+- `date1900` — xsd:date → days since 1900-01-01 (§6's encoding; dodges the predecessor's
+  pre-1970 bug). Year 9999 lands under three million days, comfortably inside every ceiling.
+  Verifiers compute cutoff bounds with real calendar arithmetic, never day-count
+  approximations of years.
+- `uint64` — the xsd:integer family, value in `[0, 2^64)`; reject outside.
+
+Deferred until a use case forces them, landmines named now: signed integers (bias by 2^63 —
+and the bias must transform every BOUND too, on both sides); decimals (declared scale,
+exact-or-reject — silent rounding flips predicate truth at the bound).
+
+**Two issuance-time rejection rules, both load-bearing.** (1) RDF canonicalization does NOT
+canonicalize literal lexical forms: `"1990-01-01"` and `"01990-01-01"` typed xsd:date are
+different quads holding equal values, so the quad message and the twin can silently disagree.
+Issuance requires the XSD-canonical lexical form for every declared pointer — reject, don't
+repair. (2) Every pointer must resolve to exactly one non-mandatory literal;
+`numericPointers ∩ mandatoryPointers = ∅` (a predicate over an always-disclosed value is
+meaningless, and the quad must be hideable); a pointer at an object or array is an error.
+
+**k is schema-level, not per-holder.** The twin count is visible in L, but it is a function
+of the declaration — every holder of the credential type shares it, like the type itself. The
+CR's own caveat that blank-node-count patterns can leak applies unchanged and is unaffected
+by the block.
+
+**Not settled here, deliberately.** The presentation envelope — how a verifier receives the
+PresentationSpec (equalities, predicates, whose alphabet params) on the wire, and what
+document shape carries N credentials' revealed subsets — is its own design pass. The
+golden-vector rule extends to the cryptosuite's proof values verbatim (§12: layout changes
+bump the version, they never edit hex).
