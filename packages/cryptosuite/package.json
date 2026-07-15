@@ -1,0 +1,25 @@
+{
+  "name": "@credkit/cryptosuite",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bespoke JSON-LD credential cryptosuite over @credkit/proofs: bbs-2023's document pipeline with a numeric twin block for predicates over hidden values. Not bbs-2023 compliant, deliberately.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@credkit/bbs": "workspace:*",
+    "@credkit/proofs": "workspace:*",
+    "@credkit/range": "workspace:*",
+    "@digitalbazaar/di-sd-primitives": "^3.3.0",
+    "@noble/hashes": "^2.2.0",
+    "jsonld": "^9.0.0"
+  },
+  "devDependencies": {
+    "@digitalbazaar/bbs-2023-cryptosuite": "^2.0.1",
+    "@types/node": "^22.0.0"
+  }
+}

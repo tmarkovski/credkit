@@ -541,3 +541,104 @@ PresentationSpec (equalities, predicates, whose alphabet params) on the wire, an
 document shape carries N credentials' revealed subsets — is its own design pass. The
 golden-vector rule extends to the cryptosuite's proof values verbatim (§12: layout changes
 bump the version, they never edit hex).
+
+## 15. packages/cryptosuite implementation record (2026-07-15, first pass)
+
+§14's design survived contact: the twin block, the pointer/encoder declaration, and the
+third header segment are all built as specified, and the age-over-18-without-disclosure test
+passes on both ciphersuites. 73 tests here, 352 across the workspace. What follows is what
+§14 could not have known.
+
+**§14's sorted-property-IRI convention was replaced by JSON pointers before any code — and
+the reason got sharper in the building.** §14 already moved to pointers to disambiguate
+two-subjects-one-predicate. Implementation added a second reason: a pointer selection is not
+one quad. Selecting `/credentialSubject/name` also selects the *linking* quad
+`_:b0 <credentialSubject> _:b1`, because the verifier cannot reach the value node without
+the path to it. So `computeTwins` filters a selection to its literal quads and requires
+exactly one; the ancestor linking quads are shared structure, not the value. The same fact
+is why `selectiveIndexes` is `[0, 3]` and not `[3]` in the golden vectors — a surprise worth
+pinning, since a naive reader expects one pointer to mean one index.
+
+**Both index sets are positions in canonical order, and mandatory quads do not cluster at
+the front.** `mandatoryIndexes = [0, 2]` in the golden vector, not `[0, 1]`: RDFC-1.0 sorts
+N-Quads, and the mandatory ones land wherever they sort. Any code that assumes a
+mandatory-then-selective block layout is wrong and will pass its own tests until the
+document changes shape.
+
+**We wrote our own strict CBOR instead of taking `cborg`.** bbs-2023 uses `cborg` and then
+spends real code defending against it — a tag table to undo tag-64 Uint8Arrays, plus
+per-field validators. A decoder that accepts only the shapes we emit is a smaller surface
+than one that accepts RFC 8949 and gets narrowed afterward: definite lengths, minimal-length
+integers, sorted map keys, no tags, no floats, no negatives, no trailing bytes. One
+encoding per value, everything else an exception. Writing it also removed the only
+non-`@noble`, non-`@credkit` runtime dependency in the crypto path. `jsonld` and
+`rdf-canonize` remain, pure JS, no WASM — §9's dependency scan extends to this package and
+is green.
+
+**The mode prefix range is ours and disjoint from the spec's by construction.**
+`0xd9 0x63 0x02..0x05` ("c" for credkit) against bbs-2023's `0xd9 0x5d 0x02..0x09`. A
+credkit proof value cannot parse as a bbs-2023 one in either direction, which is the
+envelope-level version of §11's uniform-N=1 non-interop assertion. Pinned by the test that
+feeds a base proof to `verifyProof` and requires "unrecognized envelope prefix".
+
+**`created` is absent from the proof and unrepresentable, not merely optional.** A
+per-issuance timestamp is mandatory-adjacent content disclosed on every presentation — a
+correlation handle in exactly the shape §14 spent its length rejecting. bbs-2023's own sign
+path deletes `created` too; here it is never constructed.
+
+**The verifier states the claim list; the wire carries it too.** `verifyProof` requires
+`expectedRangeClaims`/`expectedMembershipClaims` and fails unless the proof's own list
+matches exactly — §11's both-sides-supply rule, which also makes "prover proved a weaker
+bound than the verifier wanted" a loud typed failure instead of a silent pass for callers
+who forget to inspect a returned claims list. The wire copy is not redundant: it is what
+lets the mismatch produce a diagnosis rather than an opaque proof failure, and it is what a
+future VP envelope will already have. Alphabet params are matched by hash, never
+transported (§12: they are the verifier's own, fetched from a published location).
+
+**Neither the issuer key nor the nonce rides the wire.** A public key in a proof value only
+ever proves the prover holds *a* key; a carried nonce invites the verifier to trust it and
+accept a replay. Both are verifier inputs. This is a deliberate divergence from bbs-2023,
+which serializes both.
+
+**One signing path, via `blindSign` with an empty commitment.** §10's finding that the
+prover-blind slot exists at L even with no commitment (present as zero) is what makes this
+work: baseline and holder-bound issuance differ only in the commitment argument and the
+envelope prefix. No plain-BBS fork — the §11 rule again.
+
+**The document pipeline's JSON-LD safety is load-bearing, and it caught the first test
+fixture.** `safe: true` plus an offline loader that refuses unknown URLs means an undefined
+term is an error, not a silently dropped — therefore unsigned — claim. The initial fixture
+credential used `birthDate`/`stateFips`/`postalCode` with only the v2 context loaded; the
+pipeline refused it rather than signing a document missing three of its four attributes.
+Worth stating plainly: a credential whose terms are undefined is not a credential with fewer
+claims, it is a signature over something the issuer did not read.
+
+**Age predicates run `lessOrEqual`, and the inversion is a live trap.** Days-since-1900 makes
+an OLDER person a SMALLER number, so "18 or older" is `birthDate <= cutoff`. The first draft
+of the end-to-end test had it backwards; `@credkit/range` caught it at the prover
+("value does not fit in base^digits digits") rather than producing a wrong proof, because a
+negative difference wraps past the ceiling — §12's soundness argument doing exactly its job,
+observed live. Cutoffs are computed with real calendar arithmetic
+(`Date.UTC(y - 18, m, d)`), never day-count approximations of years.
+
+**Golden vectors: base proofs are pinned in full, derived proofs are pinned by shape.**
+Issuance is deterministic given a fixed HMAC key and key material. Presentations are not —
+they draw fresh randomness by design, and §11 refuses to make the challenge reproducible
+from outside — so what is frozen for derived proofs is the envelope prefix, the CBOR
+skeleton, and the index sets. The declaration serialization has its own ciphersuite-
+independent vector: if it moves, every credential ever issued fails header reconstruction.
+
+**The label shuffle is differentially tested against bbs-2023 itself.** Our sync noble
+reimplementation is asserted equal to `createShuffledIdLabelMapFunction` on a real
+`canonicalIdMap`. The reference is not exported (the package's `exports` field only exposes
+`lib/index.js`), so the test resolves the entry point and reaches the sibling module — which
+survives wherever pnpm puts the package. If a future bbs-2023 release changes the shuffle,
+this goes red before anything subtler does.
+
+**Still open, unchanged from §14.** The VP envelope: one credential per proof today. The link
+secret is signed, hidden, and reachable — `WitnessEquality` across two statements is what
+§11 built and what §13's capstone exercises — but no document shape carries N credentials'
+revealed subsets yet. Nothing in this wire format blocks it; the derived envelope grows a
+statement array and the claim lists grow a statement index. That is the next design pass, and
+it is the last thing standing between this stack and the README's four properties in one
+JSON-LD presentation.

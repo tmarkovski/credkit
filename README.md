@@ -30,11 +30,17 @@ See [docs/FINDINGS.md](docs/FINDINGS.md) for how that diagnosis turned into this
 
 ## Status
 
-Three of the four layers are implemented and green (279 tests, both ciphersuites):
-`packages/bbs` passes all 33 vendored spec vectors; `packages/proofs` does linked
-presentations (the link secret) under one merged challenge; `packages/range` does CCS range
-and set-membership predicates over hidden numeric messages (age over N, state in {FL, RI}).
-The JSON-LD cryptosuite is not started; its design is recorded in FINDINGS §14.
+All four layers are implemented and green (352 tests, both ciphersuites): `packages/bbs`
+passes all 33 vendored spec vectors; `packages/proofs` does linked presentations (the link
+secret) under one merged challenge; `packages/range` does CCS range and set-membership
+predicates over hidden numeric messages; `packages/cryptosuite` issues and verifies real
+JSON-LD credentials — proving age over 18 while the birthDate never reaches the wire, which
+is the thing the incumbent stack cannot do without a correlation handle.
+
+**One gap remains.** Each cryptosuite proof carries one credential. The link secret is
+signed, hidden, and reachable, but proving two credentials belong to the same holder needs a
+presentation envelope carrying N statements — designed at the `packages/proofs` layer,
+not yet exposed at the JSON-LD layer. See FINDINGS §15.
 
 **Start at [docs/BRIEF.md](docs/BRIEF.md).**
 
@@ -45,7 +51,7 @@ packages/
   bbs/           IETF BBS core + blind issuance      (built — fixture-pinned)
   proofs/        composite proof framework           (built — FINDINGS §11)
   range/         CCS set-membership range proofs     (built — FINDINGS §12)
-  cryptosuite/   JSON-LD suite                       (not started)
+  cryptosuite/   JSON-LD suite                       (built — FINDINGS §14, §15)
 docs/
   BRIEF.md       start here — what to build, in what order, how to verify
   FINDINGS.md    the research record: decisions and why, with evidence
