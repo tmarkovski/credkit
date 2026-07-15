@@ -1,0 +1,19 @@
+{
+  "name": "@credkit/proofs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Composite proof framework over @credkit/bbs: multi-statement presentations, one merged Fiat-Shamir challenge, witness equality (link secrets).",
+  "main": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@credkit/bbs": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

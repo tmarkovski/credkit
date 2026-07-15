@@ -28,6 +28,16 @@ importers:
         specifier: ^22.0.0
         version: 22.20.1
 
+  packages/proofs:
+    dependencies:
+      '@credkit/bbs':
+        specifier: workspace:*
+        version: link:../bbs
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+
 packages:
 
   '@esbuild/aix-ppc64@0.21.5':

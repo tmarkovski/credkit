@@ -231,3 +231,49 @@ generators that fail every fixture from step 2 onward. Cross-checked against
 pipeline with `expand: "xof", hash: shake256, k: 128`. This is relied upon in
 `ciphersuite.ts` and pinned by the generators fixture test — a noble upgrade that stops merging
 would go red there first, both suites.
+
+## 11. packages/proofs design record (2026-07-15, first composite-framework pass)
+
+No spec, no fixtures — every choice below is ours, made once, recorded here. The package's
+own golden-vector tests pin the results; a golden diff means one of these decisions changed.
+
+**Why the three-phase refactor came first.** Witness equality needs shared Schnorr blindings
+under ONE merged Fiat–Shamir challenge. Sharing a blinding under two different challenges is
+not merely unsound — it hands the verifier the witness: `m^_1 - m^_2 = (c_1 - c_2) * m`. The
+tests demonstrate the recovery end-to-end ("why the merged challenge is not optional"), and
+`@credkit/bbs` core now exposes `proofInit`/`proofChallenge`/`proofFinalize` +
+`proofVerifyInit`/`proofVerifyFinalize` so the challenge can come from outside.
+`coreProofGen`/`coreProofVerify` are the single-statement compositions; the fixture vectors
+pin the split phases byte-for-byte.
+
+**The transcript is bespoke and labeled (Frozen Heart guardrail).** Every absorbed element is
+`len(label) || label || len(value) || value`, bound to `CREDKIT-PROOFS-V1` and the ciphersuite
+id, challenge via the suite's `hash_to_scalar` under a dedicated DST, one challenge per
+transcript. The merged transcript absorbs, per statement: public key, header, issuer-known and
+total counts, disclosed (proof-index, scalar) pairs, `Abar/Bbar/D/T1/T2`, domain — then the
+equality-constraint refs. Constraint order therefore matters: prover and verifier must supply
+the same list in the same order. Deliberate — canonicalizing inside the library would hide
+prover/verifier disagreement instead of failing it.
+
+**Uniform N=1 — a single-statement presentation is NOT a spec BBS proof.** The challenge
+always comes from this package's transcript, never from the IETF `ProofChallengeCalculate`.
+One code path; a special-cased N=1 is exactly the transcript fork that breeds Fiat–Shamir
+bugs. Tests assert the non-interop explicitly (a presentation proof fails
+`blindProofVerify`). Anyone needing a spec proof uses `blindProofGen` directly.
+
+**Per-statement randomness independence is enforced, not assumed.** Reusing one stateless
+scalar source across statements leaks `e_1 - e_2` (and worse) through the shared `e~`.
+`provePresentation` throws when two statements draw identical randomness — the realistic
+misuse being a fixture mock reused for every statement.
+
+**Index spaces end at the @credkit/bbs boundary.** Constraints and disclosures are keyed in
+message space (signer 0..L-1, committed L..L+M-1); the proof-space mapping (prover-blind slot
+at L) lives only in `blindProofSetup`/`blindVerifySetup`, exported from @credkit/bbs so this
+package never reimplements the off-by-one that §10 warns about. The prover-blind slot is
+unreachable by constraints by construction.
+
+**Wire format carries the challenge once.** `N || (len || proof-without-challenge)* ||
+challenge`: a per-statement challenge mismatch is unrepresentable on the wire, and parsing
+reuses `octetsToProof` for full point/scalar validation. `messageBlindings` never serializes;
+presentation proofs re-key them to message space (same convention as `blindProofGen`) so a
+future `packages/range` statement can reuse a blinding under the same merged challenge.

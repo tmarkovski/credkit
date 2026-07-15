@@ -17,7 +17,7 @@ implementation pass discovered (including two upstream fixture defects in the SH
 | `src/ciphersuite.ts` | Suite params for SHA-256 (XMD) and SHAKE-256 (XOF): expand, hash_to_scalar, hash_to_curve G1, P1. |
 | `src/random.ts` | `calculate_random_scalars`, real and mocked (`seeded_random_scalars` for fixtures). |
 | `src/core.ts` | Generators, message scalars, domain, KeyGen, wire formats, and the core sign/verify/proof operations parameterized by api_id + generator vector. Public `sign`/`verify`/`proofGen`/`proofVerify` are the blind interface with an empty blind part. |
-| `src/blind.ts` | `commit`, `blindSign`, `blindVerify`, `blindProofGen`/`blindProofVerify` (DISCLOSE + HIDE only). |
+| `src/blind.ts` | `commit`, `blindSign`, `blindVerify`, `blindProofGen`/`blindProofVerify` (DISCLOSE + HIDE only), plus `blindProofSetup`/`blindVerifySetup` — the one home of the message-space→proof-space mapping, reused by `packages/proofs`. |
 | `test/bbs.test.ts` | Fixture-driven, one describe per build step, plus fail-closed negative tests and invariants. |
 | `test/harness.test.ts` | Fixture self-test: vectors parse, pin randomness, carry traces, cover no COMMIT cases. |
 

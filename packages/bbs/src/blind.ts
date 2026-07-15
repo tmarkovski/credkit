@@ -313,6 +313,122 @@ function disclosureIndexes(
 }
 
 /**
+ * Message space -> proof space: the secret_prover_blind occupies proof index
+ * `issuerKnownCount`, shifting every committed message up by one.
+ */
+export function proofMessageIndex(messageIndex: number, issuerKnownCount: number): number {
+  return messageIndex < issuerKnownCount ? messageIndex : messageIndex + 1;
+}
+
+/**
+ * Everything `proofInit` needs for one credential, in proof space. This is the ONE home of
+ * the message-space -> proof-space mapping on the prover side; `packages/proofs` builds
+ * multi-statement presentations from it rather than reimplementing the index arithmetic.
+ */
+export interface BlindProofSetup {
+  readonly apiId: string;
+  /** Combined vector [Q_1, H_1..H_L, Q_2, J_1..J_M]. */
+  readonly generators: readonly PointG1[];
+  /** Proof-space scalars: signer messages, secret_prover_blind, committed messages. */
+  readonly scalars: readonly Scalar[];
+  /** Proof-space disclosed indexes, ascending. */
+  readonly disclosedIndexes: readonly number[];
+  /** Proof-space hidden indexes, ascending — the order of a proof's `commitments`. */
+  readonly undisclosedIndexes: readonly number[];
+  /** Proof index of the always-hidden secret_prover_blind (= issuer-known count). */
+  readonly proverBlindIndex: number;
+}
+
+export function blindProofSetup(
+  suite: Ciphersuite,
+  messages: readonly Uint8Array[],
+  committedMessages: readonly Uint8Array[],
+  secretProverBlind: Scalar,
+  messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
+): BlindProofSetup {
+  const apiId = suite.blindApiId;
+  const L = messages.length;
+  const M = committedMessages.length;
+  const disclosed = disclosureIndexes(messageDisclosures, L + M);
+
+  const generators = [
+    ...createGeneratorPoints(suite, L + 1, apiId),
+    ...createGeneratorPoints(suite, M + 1, `BLIND_${apiId}`),
+  ];
+  const scalars = [
+    ...messagesToScalars(suite, messages, apiId),
+    Fr.create(secretProverBlind),
+    ...messagesToScalars(suite, committedMessages, apiId),
+  ];
+  const disclosedIndexes = disclosed.map((i) => proofMessageIndex(i, L));
+  const disclosedSet = new Set(disclosedIndexes);
+  const undisclosedIndexes: number[] = [];
+  for (let i = 0; i <= L + M; i++) if (!disclosedSet.has(i)) undisclosedIndexes.push(i);
+
+  return { apiId, generators, scalars, disclosedIndexes, undisclosedIndexes, proverBlindIndex: L };
+}
+
+/** The verifier-side counterpart of `BlindProofSetup`, built without the messages. */
+export interface BlindVerifySetup {
+  readonly apiId: string;
+  readonly generators: readonly PointG1[];
+  /** Proof-space index -> disclosed message scalar. */
+  readonly disclosedScalars: ReadonlyMap<number, Scalar>;
+  /** Proof-space hidden indexes, ascending — the order of a proof's `commitments`. */
+  readonly undisclosedIndexes: readonly number[];
+  readonly proverBlindIndex: number;
+}
+
+/** Throws on inconsistent input; callers that must fail closed catch and return false. */
+export function blindVerifySetup(
+  suite: Ciphersuite,
+  disclosedMessages: ReadonlyMap<number, Uint8Array>,
+  messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
+  issuerKnownMessagesNo: number,
+): BlindVerifySetup {
+  const apiId = suite.blindApiId;
+  const total = messageDisclosures.size;
+  const disclosed = disclosureIndexes(messageDisclosures, total);
+  if (!Number.isInteger(issuerKnownMessagesNo) || issuerKnownMessagesNo < 0) {
+    throw new Error("blindVerifySetup: bad issuer-known message count");
+  }
+  if (issuerKnownMessagesNo > total) {
+    throw new Error("blindVerifySetup: issuer-known message count exceeds total");
+  }
+  if (disclosedMessages.size !== disclosed.length) {
+    throw new Error("blindVerifySetup: disclosed messages do not match the DISCLOSE set");
+  }
+  for (const i of disclosed) {
+    if (!disclosedMessages.has(i)) {
+      throw new Error("blindVerifySetup: disclosed messages do not match the DISCLOSE set");
+    }
+  }
+
+  const generators = [
+    ...createGeneratorPoints(suite, issuerKnownMessagesNo + 1, apiId),
+    ...createGeneratorPoints(suite, total - issuerKnownMessagesNo + 1, `BLIND_${apiId}`),
+  ];
+  const dst = utf8(`${apiId}MAP_MSG_TO_SCALAR_AS_HASH_`);
+  const disclosedScalars = new Map<number, Scalar>();
+  for (const i of disclosed) {
+    disclosedScalars.set(
+      proofMessageIndex(i, issuerKnownMessagesNo),
+      suite.hashToScalar(disclosedMessages.get(i)!, dst),
+    );
+  }
+  const undisclosedIndexes: number[] = [];
+  for (let i = 0; i <= total; i++) if (!disclosedScalars.has(i)) undisclosedIndexes.push(i);
+
+  return {
+    apiId,
+    generators,
+    disclosedScalars,
+    undisclosedIndexes,
+    proverBlindIndex: issuerKnownMessagesNo,
+  };
+}
+
+/**
  * Step 6. Target: `proof/*.json` (8 cases, all DISCLOSE/HIDE permutations).
  *
  * `messageDisclosures` maps every signed index — signer messages first, then committed
@@ -330,30 +446,24 @@ export function blindProofGen(
   messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
   options: ProofGenOptions = {},
 ): Proof {
-  const apiId = suite.blindApiId;
-  const L = messages.length;
-  const M = committedMessages.length;
-  const disclosed = disclosureIndexes(messageDisclosures, L + M);
-
-  const generators = createGeneratorPoints(suite, L + 1, apiId);
-  const blindGenerators = createGeneratorPoints(suite, M + 1, `BLIND_${apiId}`);
-  const proofScalars = [
-    ...messagesToScalars(suite, messages, apiId),
-    Fr.create(secretProverBlind),
-    ...messagesToScalars(suite, committedMessages, apiId),
-  ];
-  const proofDisclosed = disclosed.map((i) => (i < L ? i : i + 1));
+  const setup = blindProofSetup(
+    suite,
+    messages,
+    committedMessages,
+    secretProverBlind,
+    messageDisclosures,
+  );
 
   const proof = coreProofGen(
     suite,
     publicKey,
     signature,
-    [...generators, ...blindGenerators],
+    setup.generators,
     header,
     presentationHeader,
-    proofScalars,
-    proofDisclosed,
-    apiId,
+    setup.scalars,
+    setup.disclosedIndexes,
+    setup.apiId,
     options.randomScalars ?? ((count) => calculateRandomScalars(suite, count)),
     options.traceSink,
   );
@@ -361,6 +471,7 @@ export function blindProofGen(
   // Re-key the Schnorr blindings from proof space back to the caller's message space,
   // dropping the prover-blind slot (proof index L) — it is per-credential randomness with
   // no cross-statement use.
+  const L = setup.proverBlindIndex;
   const messageBlindings = new Map<number, Scalar>();
   for (const [proofIndex, blinding] of proof.messageBlindings ?? []) {
     if (proofIndex === L) continue;
@@ -385,35 +496,21 @@ export function blindProofVerify(
   issuerKnownMessagesNo: number,
 ): boolean {
   try {
-    const apiId = suite.blindApiId;
-    const total = messageDisclosures.size;
-    const disclosed = disclosureIndexes(messageDisclosures, total);
-    if (!Number.isInteger(issuerKnownMessagesNo) || issuerKnownMessagesNo < 0) return false;
-    if (issuerKnownMessagesNo > total) return false;
-    if (disclosedMessages.size !== disclosed.length) return false;
-    for (const i of disclosed) if (!disclosedMessages.has(i)) return false;
-
-    const generators = createGeneratorPoints(suite, issuerKnownMessagesNo + 1, apiId);
-    const blindGenerators = createGeneratorPoints(
+    const setup = blindVerifySetup(
       suite,
-      total - issuerKnownMessagesNo + 1,
-      `BLIND_${apiId}`,
+      disclosedMessages,
+      messageDisclosures,
+      issuerKnownMessagesNo,
     );
-    const dst = utf8(`${apiId}MAP_MSG_TO_SCALAR_AS_HASH_`);
-    const disclosedScalars = new Map<number, Scalar>();
-    for (const i of disclosed) {
-      const proofIndex = i < issuerKnownMessagesNo ? i : i + 1;
-      disclosedScalars.set(proofIndex, suite.hashToScalar(disclosedMessages.get(i)!, dst));
-    }
     return coreProofVerify(
       suite,
       publicKey,
       proof,
-      [...generators, ...blindGenerators],
+      setup.generators,
       header,
       presentationHeader,
-      disclosedScalars,
-      apiId,
+      setup.disclosedScalars,
+      setup.apiId,
     );
   } catch {
     return false;

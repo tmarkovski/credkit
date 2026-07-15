@@ -68,16 +68,21 @@ export {
 
 export {
   blindProofGen,
+  blindProofSetup,
   blindProofVerify,
   blindSign,
   blindVerify,
+  blindVerifySetup,
   commit,
   committedMessageCount,
   deserializeAndValidateCommit,
+  proofMessageIndex,
   verifyCommitment,
+  type BlindProofSetup,
+  type BlindVerifySetup,
   type CommitOptions,
   type CommitmentWithProof,
   type MessageDisclosure,
 } from "./blind.js";
 
-export { bytesToHex, hexToBytes } from "./utils.js";
+export { bytesToHex, concatBytes, hexToBytes, i2osp, os2ip, utf8 } from "./utils.js";
