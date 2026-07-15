@@ -348,3 +348,46 @@ right in the small: every line of `packages/range` is ours. But the §6 estimate
 held exactly — base 16, 4 digits, a 16-signature alphabet, one pairing per digit to prove,
 two per digit to verify, and the whole thing landed in one pass because the three-phase seam
 built for witness equality (§11) was already the right seam for predicates.
+
+## 13. Set membership as a first-class predicate (2026-07-15, same day, follow-on pass)
+
+§6 quoted the CCS construction as "signatures on the elements of a set" — that IS the paper's
+base primitive; the §12 range proof is its digit-decomposition composition. We built the
+specialization first because age was the driving use case, which left arbitrary sets
+({FL, RI}, not {0..u-1}) unreachable: `RangeParams` signs consecutive indexes. This pass adds
+the base primitive properly.
+
+**The binding is response EQUALITY — the simplest one in the stack.** A membership proof
+shares the referenced message's Schnorr blinding m~ directly (no negation, no weights), so
+under the merged challenge its response must literally equal the BBS response scalar for the
+slot: `response == m^`. It is the witness-equality mechanic from §11 pointed at a blinded BB
+signature instead of a second credential. The verifier learns "one of the signed members",
+never which — both qualifying states verify against the same descriptor, pinned by test.
+
+**Member order is bound, not canonicalized.** `setParamsToOctets` (absorbed whole into the
+transcript) serializes members in publication order; the same set reordered fails
+verification. Same principle as §11's constraint-order decision: canonicalizing inside the
+library would hide prover/verifier disagreement instead of failing it.
+
+**Shared randomness across alphabet proofs is BRUTE-FORCEABLE — the independence guard is
+now joint.** If two alphabet proofs (range digits or memberships) reuse one signature
+blinding v, then V_1 = A_a^v and V_2 = B_b^v satisfy
+`e(V_1, y_1 + a*G2) == e(V_2, y_2 + b*G2)` — and because alphabets are SMALL (16 digits, a
+handful of set members), a verifier can sweep all candidate pairs (a, b) and recover both
+hidden values outright. This is sharper than the generic "don't reuse randomness" rule that
+motivated the per-statement check in §11: there the leak was a relation, here it is the
+values themselves at trivial cost. `provePresentation` therefore enforces first-drawn-scalar
+independence across ALL range and membership proofs jointly.
+
+**PROTOCOL_ID bumped to CREDKIT-PROOFS-V3.** A `set_membership_count` section is absorbed
+(even when empty) and a third wire section carries the membership proofs (fixed 112 octets
+each: V || response || blindingResponse). Same rule as §12: layout changes bump, never edit
+hex.
+
+**The use cases are pinned as tests** (`packages/proofs/test/residency.test.ts`): the
+FL/RI "coastal resident discount" over a hidden state FIPS code, with a Californian refused
+at the prover and a forged claimed-state caught only by the response binding; and
+ZIP-inside-a-state — two one-sided range predicates over a hidden ZIP whose over-coverage
+intersects to exactly Florida's 32000..34999 block, proving the state while hiding the city.
+The capstone test runs all three claim kinds (link-secret equality, age range, state
+membership) in one presentation under one challenge.

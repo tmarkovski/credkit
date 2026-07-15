@@ -23,6 +23,11 @@
  * modular arithmetic, so the natural >=/<= reading requires applications to encode values
  * well below r (e.g. dob as days since 1900, salary as an integer — both < 2^64).
  *
+ * Set-membership predicates (FINDINGS §13) are the same idea with an arbitrary signed set
+ * and no digits: the membership proof shares the message's blinding directly, so its
+ * response must EQUAL the message's BBS response. The verifier learns "one of the members",
+ * never which one.
+ *
  * NOT interoperable with single-proof BBS: even a one-statement presentation derives its
  * challenge from this package's transcript, not the IETF ProofChallengeCalculate. One code
  * path, uniformly — a special-cased N=1 is exactly the kind of transcript fork that breeds
@@ -63,15 +68,25 @@ import {
   aggregateDigitScalar,
   gtToOctets,
   octetsToRangeProof,
+  octetsToSetProof,
   rangeParamsToOctets,
   rangeProofFinalize,
   rangeProofInit,
   rangeProofToOctets,
   rangeVerifyInit,
+  setParamsToOctets,
+  setProofFinalize,
+  setProofInit,
+  setProofToOctets,
+  setVerifyInit,
   type RangeInitParts,
   type RangeInitState,
   type RangeParams,
   type RangeProof,
+  type SetMembershipInitParts,
+  type SetMembershipInitState,
+  type SetMembershipParams,
+  type SetMembershipProof,
 } from "@credkit/range";
 import { Transcript } from "./transcript.js";
 
@@ -130,10 +145,23 @@ export interface RangePredicate {
   readonly params: RangeParams;
 }
 
+/**
+ * A membership claim over one hidden NUMERIC message: the value is one of the (public)
+ * signed set members. The verifier learns "in the set" and nothing more — not which member.
+ * Same trust and encoding rules as RangePredicate; the whole params (members included) is
+ * bound into the transcript.
+ */
+export interface SetMembershipPredicate {
+  readonly statement: number;
+  readonly messageIndex: number;
+  readonly params: SetMembershipParams;
+}
+
 /** What is being claimed about the statements, beyond the signatures themselves. */
 export interface PresentationSpec {
   readonly equalities?: readonly EqualityConstraint[];
   readonly predicates?: readonly RangePredicate[];
+  readonly memberships?: readonly SetMembershipPredicate[];
 }
 
 export interface Presentation {
@@ -141,6 +169,8 @@ export interface Presentation {
   readonly proofs: readonly Proof[];
   /** One proof per range predicate, in spec order, under the same merged challenge. */
   readonly rangeProofs: readonly RangeProof[];
+  /** One proof per set-membership predicate, in spec order, same merged challenge. */
+  readonly membershipProofs: readonly SetMembershipProof[];
   readonly challenge: Scalar;
 }
 
@@ -156,6 +186,8 @@ export interface ProvePresentationOptions {
   readonly constraintRandomScalars?: RandomScalars;
   /** Per-predicate randomness source, for tests. Same independence rule as statements. */
   readonly predicateRandomScalars?: (predicateIndex: number) => RandomScalars;
+  /** Per-membership randomness source, for tests. Same independence rule as statements. */
+  readonly membershipRandomScalars?: (membershipIndex: number) => RandomScalars;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +210,8 @@ function mergedChallenge(
   equalities: readonly EqualityConstraint[],
   predicates: readonly RangePredicate[],
   predicateParts: readonly RangeInitParts[],
+  memberships: readonly SetMembershipPredicate[],
+  membershipParts: readonly SetMembershipInitParts[],
 ): Scalar {
   const t = new Transcript(suite);
   t.appendBytes("presentation_header", presentationHeader);
@@ -222,6 +256,16 @@ function mergedChallenge(
       t.appendPoint("V", parts.Vs[i]!);
       t.appendBytes("R", gtToOctets(parts.Rs[i]!));
     }
+  }
+  t.appendNumber("set_membership_count", memberships.length);
+  for (const [k, m] of memberships.entries()) {
+    const parts = membershipParts[k]!;
+    t.appendNumber("membership", k);
+    t.appendNumber("membership_statement", m.statement);
+    t.appendNumber("membership_message_index", m.messageIndex);
+    t.appendBytes("membership_params", setParamsToOctets(suite, m.params));
+    t.appendPoint("V", parts.V);
+    t.appendBytes("R", gtToOctets(parts.R));
   }
   return t.challenge("presentation_challenge");
 }
@@ -288,6 +332,21 @@ function validatePredicate(
   // by @credkit/range on both the prove and verify paths.
 }
 
+function validateMembership(
+  membership: SetMembershipPredicate,
+  statementCount: number,
+): void {
+  if (
+    !Number.isInteger(membership.statement) ||
+    membership.statement < 0 ||
+    membership.statement >= statementCount
+  ) {
+    throw new Error("set membership predicate: bad statement index");
+  }
+  // Member-list validity (distinctness, ranges, count) is enforced by @credkit/range on
+  // both the prove and verify paths.
+}
+
 export function provePresentation(
   suite: Ciphersuite,
   statements: readonly CredentialStatement[],
@@ -298,6 +357,7 @@ export function provePresentation(
   if (statements.length === 0) throw new Error("presentation: no statements");
   const equalities = spec.equalities ?? [];
   const predicates = spec.predicates ?? [];
+  const memberships = spec.memberships ?? [];
 
   const setups = statements.map((s) =>
     blindProofSetup(
@@ -420,12 +480,48 @@ export function provePresentation(
       predicateRng(k),
     );
   });
-  const seenVTildes = new Set<Scalar>();
-  for (const state of rangeStates) {
-    if (seenVTildes.has(state.secrets.vTildes[0]!)) {
+  // Set memberships share the referenced message's Schnorr blinding DIRECTLY: under the
+  // merged challenge the membership response must equal the slot's BBS response. Numeric
+  // message rules are the same as range predicates'.
+  const membershipRng =
+    options.membershipRandomScalars ??
+    (() => (count: number) => calculateRandomScalars(suite, count));
+  const membershipStates: SetMembershipInitState[] = memberships.map((m, k) => {
+    validateMembership(m, statements.length);
+    const statement = statements[m.statement]!;
+    const setup = setups[m.statement]!;
+    const total = statement.messages.length + (statement.committedMessages?.length ?? 0);
+    const position = witnessPosition(
+      { statement: m.statement, messageIndex: m.messageIndex },
+      setup.proverBlindIndex,
+      total,
+      setup.undisclosedIndexes,
+    );
+    const raw =
+      m.messageIndex < statement.messages.length
+        ? statement.messages[m.messageIndex]
+        : statement.committedMessages?.[m.messageIndex - statement.messages.length];
+    if (typeof raw !== "bigint") {
+      throw new Error("set membership predicate: referenced message is not numeric");
+    }
+    const value = setup.scalars[proofMessageIndex(m.messageIndex, setup.proverBlindIndex)]!;
+    const blinding = states[m.statement]!.secrets.mTildes[position]!;
+    return setProofInit(suite, m.params, { value, blinding }, membershipRng(k));
+  });
+
+  // Independence across ALL alphabet proofs, jointly: a signature blinding v shared between
+  // two small-alphabet proofs is brute-forceable — testing e(V1, y1 + d'*G2) ==
+  // e(V2, y2 + m'*G2) over candidate pairs reveals both hidden values. Guard the realistic
+  // misuse (one stateless mock everywhere) via each proof's first drawn scalar.
+  const seenFirstDraws = new Set<Scalar>();
+  for (const first of [
+    ...rangeStates.map((state) => state.secrets.vs[0]!),
+    ...membershipStates.map((state) => state.secrets.v),
+  ]) {
+    if (seenFirstDraws.has(first)) {
       throw new Error("presentation: predicates drew identical randomness — sources must be independent");
     }
-    seenVTildes.add(state.secrets.vTildes[0]!);
+    seenFirstDraws.add(first);
   }
 
   const contexts: StatementContext[] = states.map((state, index) => ({
@@ -443,6 +539,8 @@ export function provePresentation(
     equalities,
     predicates,
     rangeStates,
+    memberships,
+    membershipStates,
   );
 
   const proofs = states.map((state, index) => {
@@ -459,8 +557,9 @@ export function provePresentation(
     return { ...proof, messageBlindings };
   });
   const rangeProofs = rangeStates.map((state) => rangeProofFinalize(state, challenge));
+  const membershipProofs = membershipStates.map((state) => setProofFinalize(state, challenge));
 
-  return { proofs, rangeProofs, challenge };
+  return { proofs, rangeProofs, membershipProofs, challenge };
 }
 
 // ---------------------------------------------------------------------------
@@ -478,9 +577,11 @@ export function verifyPresentation(
   try {
     const equalities = spec.equalities ?? [];
     const predicates = spec.predicates ?? [];
+    const memberships = spec.memberships ?? [];
     const N = statements.length;
     if (N === 0 || presentation.proofs.length !== N) return false;
     if (presentation.rangeProofs.length !== predicates.length) return false;
+    if (presentation.membershipProofs.length !== memberships.length) return false;
     for (const proof of presentation.proofs) {
       if (proof.challenge !== presentation.challenge) return false;
     }
@@ -509,6 +610,10 @@ export function verifyPresentation(
         presentation.challenge,
       );
     });
+    const membershipParts = memberships.map((m, k) => {
+      validateMembership(m, N);
+      return setVerifyInit(suite, m.params, presentation.membershipProofs[k]!, presentation.challenge);
+    });
 
     const contexts: StatementContext[] = inits.map((parts, index) => ({
       publicKey: statements[index]!.publicKey,
@@ -524,6 +629,8 @@ export function verifyPresentation(
       equalities,
       predicates,
       predicateParts,
+      memberships,
+      membershipParts,
     );
     if (challenge !== presentation.challenge) return false;
 
@@ -574,6 +681,22 @@ export function verifyPresentation(
       if (sigma !== expected) return false;
     }
 
+    // Membership binding: the membership response must BE the referenced message's response
+    // — a shared blinding under the one challenge makes them equal iff the values are.
+    for (const [k, m] of memberships.entries()) {
+      const descriptor = statements[m.statement]!;
+      const setup = setups[m.statement]!;
+      const position = witnessPosition(
+        { statement: m.statement, messageIndex: m.messageIndex },
+        descriptor.issuerKnownCount,
+        descriptor.messageDisclosures.size,
+        setup.undisclosedIndexes,
+      );
+      const mHat = presentation.proofs[m.statement]!.commitments[position];
+      if (mHat === undefined) return false;
+      if (presentation.membershipProofs[k]!.response !== mHat) return false;
+    }
+
     return inits.every((parts, index) =>
       proofVerifyFinalize(statements[index]!.publicKey, parts),
     );
@@ -589,6 +712,7 @@ export function verifyPresentation(
 /**
  * presentation := i2osp(N, 8) || N * ( i2osp(len_i, 8) || proof_i_without_challenge )
  *              || i2osp(K, 8) || K * ( i2osp(len_k, 8) || range_proof_k )
+ *              || i2osp(M, 8) || M * ( i2osp(len_m, 8) || membership_proof_m )
  *              || challenge
  *
  * Every proof carries the SAME merged challenge, so it is serialized exactly once, at the
@@ -606,11 +730,16 @@ export function presentationToOctets(
     return proofToOctets(suite, proof).slice(0, -suite.scalarLength);
   });
   const rangeBodies = presentation.rangeProofs.map((proof) => rangeProofToOctets(suite, proof));
+  const membershipBodies = presentation.membershipProofs.map((proof) =>
+    setProofToOctets(suite, proof),
+  );
   return concatBytes(
     i2osp(presentation.proofs.length, 8),
     ...bodies.flatMap((body) => [i2osp(body.length, 8), body]),
     i2osp(rangeBodies.length, 8),
     ...rangeBodies.flatMap((body) => [i2osp(body.length, 8), body]),
+    i2osp(membershipBodies.length, 8),
+    ...membershipBodies.flatMap((body) => [i2osp(body.length, 8), body]),
     i2osp(presentation.challenge, suite.scalarLength),
   );
 }
@@ -645,18 +774,23 @@ export function octetsToPresentation(suite: Ciphersuite, octets: Uint8Array): Pr
     at += len;
   }
 
-  if (octets.length - at < 8) throw new Error("presentation: bad length");
-  const K = readLength(at);
-  at += 8;
-  const rangeBodies: Uint8Array[] = [];
-  for (let k = 0; k < K; k++) {
+  const readSection = (): Uint8Array[] => {
     if (octets.length - at < 8) throw new Error("presentation: bad length");
-    const len = readLength(at);
+    const count = readLength(at);
     at += 8;
-    if (octets.length - at < len) throw new Error("presentation: bad length");
-    rangeBodies.push(octets.slice(at, at + len));
-    at += len;
-  }
+    const section: Uint8Array[] = [];
+    for (let k = 0; k < count; k++) {
+      if (octets.length - at < 8) throw new Error("presentation: bad length");
+      const len = readLength(at);
+      at += 8;
+      if (octets.length - at < len) throw new Error("presentation: bad length");
+      section.push(octets.slice(at, at + len));
+      at += len;
+    }
+    return section;
+  };
+  const rangeBodies = readSection();
+  const membershipBodies = readSection();
 
   if (octets.length - at !== scalarLength) throw new Error("presentation: bad length");
   const challengeBytes = octets.slice(at);
@@ -664,5 +798,6 @@ export function octetsToPresentation(suite: Ciphersuite, octets: Uint8Array): Pr
   // Re-attach the shared challenge and reuse the fully-validating parsers.
   const proofs = bodies.map((body) => octetsToProof(suite, concatBytes(body, challengeBytes)));
   const rangeProofs = rangeBodies.map((body) => octetsToRangeProof(suite, body));
-  return { proofs, rangeProofs, challenge: proofs[0]!.challenge };
+  const membershipProofs = membershipBodies.map((body) => octetsToSetProof(suite, body));
+  return { proofs, rangeProofs, membershipProofs, challenge: proofs[0]!.challenge };
 }

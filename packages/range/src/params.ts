@@ -61,6 +61,15 @@ function checkBase(base: number): void {
   }
 }
 
+/** BB-sign every element: A = G1 * 1/(x + element). Throws on the ~|set|/r degenerate x. */
+function signElements(x: bigint, elements: readonly bigint[]): PointG1[] {
+  return elements.map((element) => {
+    const denom = Fr.add(x, Fr.create(element));
+    if (denom === 0n) throw new Error("range params: degenerate signing scalar — resample");
+    return G1.BASE.multiply(Fr.inv(denom));
+  });
+}
+
 export function createRangeParams(
   suite: Ciphersuite,
   base: number,
@@ -72,12 +81,7 @@ export function createRangeParams(
   // x = 0 or x = -i for an alphabet element is a ~u/r event with real randomness; a seeded
   // test source that hits it should pick a different seed rather than silently skew.
   if (x === 0n) throw new Error("range params: degenerate signing scalar — resample");
-  const signatures: PointG1[] = [];
-  for (let i = 0; i < base; i++) {
-    const denom = Fr.add(x, Fr.create(BigInt(i)));
-    if (denom === 0n) throw new Error("range params: degenerate signing scalar — resample");
-    signatures.push(G1.BASE.multiply(Fr.inv(denom)));
-  }
+  const signatures = signElements(x, Array.from({ length: base }, (_, i) => BigInt(i)));
   return { base, publicKey: G2.BASE.multiply(x), signatures };
 }
 
@@ -142,4 +146,126 @@ export function octetsToRangeParams(suite: Ciphersuite, octets: Uint8Array): Ran
     signatures.push(A);
   }
   return { base, publicKey, signatures };
+}
+
+// ---------------------------------------------------------------------------
+// Arbitrary-set params — the CCS paper's base primitive
+// ---------------------------------------------------------------------------
+
+export const MIN_SET_SIZE = 1;
+export const MAX_SET_SIZE = 65536;
+
+/**
+ * A signed arbitrary set: `signatures[j]` is a BB signature on `members[j]`. This is what
+ * the CCS paper actually publishes — the consecutive `RangeParams` alphabet is the special
+ * case `members = [0..base-1]` that digit decomposition uses. Same trust model: the
+ * verifier signs its own set, and everything under "range params" above (including the
+ * per-prover-alphabet linkability warning) applies verbatim.
+ */
+export interface SetMembershipParams {
+  /** Distinct scalars in [0, r), in publication order (the transcript binds the order). */
+  readonly members: readonly bigint[];
+  /** y = G2 * x. The signing scalar x must be discarded after setup. */
+  readonly publicKey: PointG2;
+  readonly signatures: readonly PointG1[];
+}
+
+function checkMembers(members: readonly bigint[]): void {
+  if (members.length < MIN_SET_SIZE || members.length > MAX_SET_SIZE) {
+    throw new Error(`set params: member count must be in [${MIN_SET_SIZE}, ${MAX_SET_SIZE}]`);
+  }
+  const seen = new Set<bigint>();
+  for (const m of members) {
+    if (typeof m !== "bigint" || m < 0n || m >= Fr.ORDER) {
+      throw new Error("set params: member out of range");
+    }
+    if (seen.has(m)) throw new Error("set params: duplicate member");
+    seen.add(m);
+  }
+}
+
+export function createSetParams(
+  suite: Ciphersuite,
+  members: readonly bigint[],
+  options: RangeParamsOptions = {},
+): SetMembershipParams {
+  checkMembers(members);
+  const rng = options.randomScalars ?? ((count: number) => calculateRandomScalars(suite, count));
+  const x = Fr.create(rng(1)[0]!);
+  if (x === 0n) throw new Error("range params: degenerate signing scalar — resample");
+  return {
+    members: [...members],
+    publicKey: G2.BASE.multiply(x),
+    signatures: signElements(x, members),
+  };
+}
+
+/** Check every member's signature: e(A_j, y + G2 * members[j]) == e(G1, G2). */
+export function verifySetParams(params: SetMembershipParams): boolean {
+  try {
+    checkMembers(params.members);
+    if (params.signatures.length !== params.members.length) return false;
+    params.publicKey.assertValidity();
+    if (params.publicKey.equals(G2.ZERO)) return false;
+    for (let j = 0; j < params.members.length; j++) {
+      const A = params.signatures[j]!;
+      A.assertValidity();
+      if (A.equals(G1.ZERO)) return false;
+      const m = params.members[j]!;
+      const yj = m === 0n ? params.publicKey : params.publicKey.add(G2.BASE.multiply(m));
+      const res = bls12_381.pairingBatch([
+        { g1: A, g2: yj },
+        { g1: G1.BASE.negate(), g2: G2.BASE },
+      ]);
+      if (!Fp12.eql(res, Fp12.ONE)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** params := i2osp(count, 8) || publicKey || ( i2osp(member, 32) || A_j )* */
+export function setParamsToOctets(suite: Ciphersuite, params: SetMembershipParams): Uint8Array {
+  checkMembers(params.members);
+  if (params.signatures.length !== params.members.length) {
+    throw new Error("set params: signature count does not match members");
+  }
+  return concatBytes(
+    i2osp(params.members.length, 8),
+    params.publicKey.toBytes(),
+    ...params.members.flatMap((m, j) => [
+      i2osp(m, suite.scalarLength),
+      params.signatures[j]!.toBytes(),
+    ]),
+  );
+}
+
+/** Throws on malformed input; members and points are fully validated on the way in. */
+export function octetsToSetParams(suite: Ciphersuite, octets: Uint8Array): SetMembershipParams {
+  const { pointLength, scalarLength } = suite;
+  if (octets.length < 8 + G2_POINT_LENGTH) throw new Error("set params: bad length");
+  const count = Number(os2ip(octets.slice(0, 8)));
+  if (!Number.isInteger(count) || count < MIN_SET_SIZE || count > MAX_SET_SIZE) {
+    throw new Error("set params: bad member count");
+  }
+  const entry = scalarLength + pointLength;
+  if (octets.length !== 8 + G2_POINT_LENGTH + count * entry) {
+    throw new Error("set params: bad length");
+  }
+  const publicKey = G2.fromBytes(octets.slice(8, 8 + G2_POINT_LENGTH));
+  publicKey.assertValidity();
+  if (publicKey.equals(G2.ZERO)) throw new Error("set params: identity public key");
+  const members: bigint[] = [];
+  const signatures: PointG1[] = [];
+  for (let j = 0; j < count; j++) {
+    const at = 8 + G2_POINT_LENGTH + j * entry;
+    members.push(os2ip(octets.slice(at, at + scalarLength)));
+    const A = G1.fromBytes(octets.slice(at + scalarLength, at + entry));
+    A.assertValidity();
+    if (A.equals(G1.ZERO)) throw new Error("set params: identity signature");
+    signatures.push(A);
+  }
+  checkMembers(members);
+  return { members, publicKey, signatures };
 }

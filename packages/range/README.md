@@ -27,13 +27,21 @@ package has **no standalone verify and no internal challenge** — a range proof
 until it is tied to something. [`@credkit/proofs`](../proofs) does the tying (`RangePredicate`,
 over hidden numeric BBS messages); use it unless you are building a new composite framework.
 
+**Arbitrary-set membership** (`membership.ts`) is the same primitive without digits — the
+paper's base construction. The verifier signs any set of scalars ({12, 44} for "FL or RI",
+not just {0..u-1}); the prover blinds the one signature on their hidden value and the proof's
+response must EQUAL the outer statement's response for the slot. One signature, one pairing
+to prove, two to verify; the verifier learns "in the set", never which member.
+
 ## What's here
 
 | File | Purpose |
 |---|---|
-| `src/params.ts` | Alphabet params: `createRangeParams`, `verifyRangeParams`, serialization. |
+| `src/params.ts` | Alphabet params (`createRangeParams`) and arbitrary-set params (`createSetParams`), verification, serialization. |
 | `src/proof.ts` | `digitDecompose`, `aggregateDigitScalar`, and the three-phase sigma protocol: `rangeProofInit` / `rangeProofFinalize` / `rangeVerifyInit`. Wire format. |
+| `src/membership.ts` | Set membership, three-phase: `setProofInit` / `setProofFinalize` / `setVerifyInit`. Wire format. |
 | `test/range.test.ts` | Params, digit machinery, the protocol against a manual challenge, tampering, golden vectors. |
+| `test/membership.test.ts` | Same layers for set membership, over the {FL, RI} example set. |
 
 ## Rules the API enforces (don't fight them)
 

@@ -24,6 +24,7 @@ export {
   type ProvePresentationOptions,
   type RangePredicate,
   type RangePredicateKind,
+  type SetMembershipPredicate,
   type StatementDescriptor,
   type WitnessRef,
 } from "./presentation.js";

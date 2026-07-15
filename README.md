@@ -30,10 +30,11 @@ See [docs/FINDINGS.md](docs/FINDINGS.md) for how that diagnosis turned into this
 
 ## Status
 
-Three of the four layers are implemented and green (241 tests, both ciphersuites):
+Three of the four layers are implemented and green (279 tests, both ciphersuites):
 `packages/bbs` passes all 33 vendored spec vectors; `packages/proofs` does linked
-presentations (the link secret) under one merged challenge; `packages/range` does CCS age/range
-predicates over hidden numeric messages. The JSON-LD cryptosuite is not started.
+presentations (the link secret) under one merged challenge; `packages/range` does CCS range
+and set-membership predicates over hidden numeric messages (age over N, state in {FL, RI}).
+The JSON-LD cryptosuite is not started.
 
 **Start at [docs/BRIEF.md](docs/BRIEF.md).**
 

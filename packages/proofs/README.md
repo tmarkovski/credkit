@@ -14,9 +14,10 @@ package's own golden-vector tests. **Read [`docs/BRIEF.md`](../../docs/BRIEF.md)
 | File | Purpose |
 |---|---|
 | `src/transcript.ts` | Labeled, length-prefixed Fiat–Shamir transcript (the Frozen Heart guardrail). One transcript, one challenge. |
-| `src/presentation.ts` | `provePresentation` / `verifyPresentation`, equality constraints, range predicates, wire format. |
+| `src/presentation.ts` | `provePresentation` / `verifyPresentation`, equality constraints, range + set-membership predicates, wire format. |
 | `test/proofs.test.ts` | E2E link-secret flow, golden vectors, fail-closed negatives, and the witness-recovery demo. |
 | `test/predicates.test.ts` | E2E age-over-18 flow, predicate negatives, the value-lie demo, golden vectors. |
+| `test/residency.test.ts` | Set membership (FL/RI discount over a hidden state) and ZIP-inside-a-state, with the claimed-state-lie demo. |
 
 ## The flow this enables
 
@@ -35,6 +36,8 @@ const spec = {
   predicates: [{ statement: 0, messageIndex: 1,       // A's hidden dob…
                  kind: "lessOrEqual", bound: cutoffDays, // …is on/before the 18+ cutoff
                  digits: 4, params: verifierRangeParams }],
+  memberships: [{ statement: 0, messageIndex: 2,      // A's hidden state FIPS code…
+                  params: coastalStateParams }],       // …is FL or RI, without saying which
 };
 const presentation = provePresentation(suite, [credentialA, credentialB], spec, presentationHeader);
 const ok = verifyPresentation(suite, presentation, descriptors, spec, presentationHeader);
@@ -56,10 +59,11 @@ interface. The prover-blind slot is internal and unreachable.
   the same spec, in the same order; a mismatch fails verification rather than being papered
   over by canonicalization. Every predicate field — kind, bound, digits, the full alphabet —
   is absorbed.
-- **Predicates need numeric messages.** A range predicate must reference a HIDDEN message
-  signed as a bigint; the prover refuses disclosed slots and hash-mapped (byte) messages.
-  The claim is modular arithmetic — encode honest values well below r (< 2^64) or the
-  >=/<= reading doesn't hold. Bounds are inclusive; `base^digits <= 2^64` is enforced.
+- **Predicates need numeric messages.** A range or membership predicate must reference a
+  HIDDEN message signed as a bigint; the prover refuses disclosed slots and hash-mapped
+  (byte) messages. Range claims are modular arithmetic — encode honest values well below r
+  (< 2^64) or the >=/<= reading doesn't hold. Bounds are inclusive; `base^digits <= 2^64` is
+  enforced. Membership params bind the member list AND its order.
 - **Fail closed.** `verifyPresentation` returns `false` on any malformed input; the octet
   parsers throw.
 
@@ -71,8 +75,9 @@ non-interop. Need a spec BBS proof? Use `blindProofGen` from `@credkit/bbs` dire
 
 A change to the transcript layout, the wire format, or `PROTOCOL_ID` breaks every stored
 presentation: the golden-vector tests will fail, and that failure means "bump the protocol
-version and migrate", not "update the hex". (V1 → V2 was exactly that: range predicates
-joined the transcript and the wire format. V1 never shipped, but the rule held anyway.)
+version and migrate", not "update the hex". (V1 → V2 → V3 were exactly that: range
+predicates, then set-membership predicates, joined the transcript and the wire format.
+Neither predecessor shipped, but the rule held anyway.)
 
 ## Running
 

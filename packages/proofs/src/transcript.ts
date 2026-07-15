@@ -25,9 +25,10 @@ import {
 } from "@credkit/bbs";
 
 // V2: range predicates joined the transcript and the wire format (a predicate section is
-// absorbed and serialized even when empty). V1 never shipped outside this repo, but the
-// golden-vector rule is absolute — layout changes bump the version, they don't edit hex.
-export const PROTOCOL_ID = "CREDKIT-PROOFS-V2";
+// absorbed and serialized even when empty). V3: set-membership predicates joined the same
+// way. Neither V1 nor V2 shipped outside this repo, but the golden-vector rule is absolute —
+// layout changes bump the version, they don't edit hex.
+export const PROTOCOL_ID = "CREDKIT-PROOFS-V3";
 
 export class Transcript {
   private readonly pieces: Uint8Array[] = [];
