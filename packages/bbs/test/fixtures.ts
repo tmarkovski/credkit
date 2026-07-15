@@ -27,33 +27,37 @@ export interface MockRngParameters {
   readonly proof?: MockRngSpec;
 }
 
+export interface GeneratorSet {
+  readonly api_id: string;
+  readonly P1: string;
+  readonly Q1: string;
+  readonly MsgGenerators: readonly string[];
+}
+
 export interface GeneratorsFixture {
-  readonly generators: {
-    /**
-     * NOTE the `BLIND_` infix: `BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_BLIND_H2G_HM2S_`.
-     * The blind extension derives its own generator set under a distinct api_id — it is NOT
-     * the base suite's id. Getting this wrong yields generators that look plausible and fail
-     * only at proof verification.
-     */
-    readonly api_id: string;
-    readonly P1: string;
-    readonly Q1: string;
-    readonly [key: string]: unknown;
-  };
+  /**
+   * NOTE the `BLIND_` infix in `generators.api_id`:
+   * `BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_BLIND_H2G_HM2S_`. The blind extension derives its
+   * generator set under its own api_id — it is NOT the base suite's id. `blindGenerators`
+   * adds a second `BLIND_` prefix on top. Getting either wrong yields generators that look
+   * plausible and fail only at proof verification.
+   */
+  readonly generators: GeneratorSet;
+  readonly blindGenerators: GeneratorSet;
 }
 
 export interface SignatureFixture {
   readonly caseName: string;
   readonly mockRngParameters: MockRngParameters;
   readonly signerKeyPair: { readonly secretKey: string; readonly publicKey: string };
-  readonly commitmentWithProof?: string;
+  readonly commitmentWithProof?: string | null;
   readonly header: string;
   readonly messages: readonly string[];
-  readonly committedMessages: readonly string[];
-  readonly proverBlind?: string;
+  readonly committedMessages: readonly string[] | null;
+  readonly proverBlind?: string | null;
   readonly signature: string;
   readonly result: { readonly valid: boolean; readonly reason?: string };
-  readonly trace?: Record<string, unknown>;
+  readonly trace?: { readonly B?: string; readonly domain?: string };
 }
 
 export interface CommitFixture {
@@ -63,7 +67,21 @@ export interface CommitFixture {
   readonly proverBlind: string;
   readonly commitmentWithProof: string;
   readonly result: { readonly valid: boolean; readonly reason?: string };
-  readonly trace?: Record<string, unknown>;
+  readonly trace?: {
+    readonly random_scalars?: {
+      readonly s_tilde: string;
+      readonly m_tildes: readonly string[];
+    };
+  };
+}
+
+export interface ProofTraceRandomScalars {
+  readonly r1: string;
+  readonly r2: string;
+  readonly e_tilde: string;
+  readonly r1_tilde: string;
+  readonly r3_tilde: string;
+  readonly m_tilde_scalars: readonly string[];
 }
 
 export interface ProofFixture {
@@ -71,16 +89,18 @@ export interface ProofFixture {
   readonly mockRngParameters: MockRngParameters;
   readonly signerPublicKey: string;
   readonly signature: string;
-  readonly commitmentWithProof?: string;
-  readonly proverBlind?: string;
+  readonly commitmentWithProof?: string | null;
+  readonly proverBlind?: string | null;
   readonly header: string;
   readonly presentationHeader: string;
   readonly revealedMessages: Readonly<Record<string, string>>;
-  readonly committedMessages?: readonly string[];
+  readonly revealedCommittedMessages?: Readonly<Record<string, string>> | null;
+  readonly committedMessages?: readonly string[] | null;
+  readonly L: number;
   readonly proof: string;
   readonly result: { readonly valid: boolean; readonly reason?: string };
   readonly trace?: {
-    readonly random_scalars?: unknown;
+    readonly random_scalars?: ProofTraceRandomScalars;
     readonly Abar?: string;
     readonly B?: string;
     readonly Bbar?: string;
@@ -107,6 +127,9 @@ export const specSha = (): string =>
   readFileSync(join(FIXTURE_ROOT, ".spec-sha"), "utf8").trim();
 
 export const messages = (): string[] => readJson<{ messages: string[] }>("messages.json").messages;
+
+export const committedMessages = (): string[] =>
+  readJson<{ committedMessages: string[] }>("messages.json").committedMessages;
 
 export const generators = (dir: FixtureDir): GeneratorsFixture =>
   readJson<GeneratorsFixture>(dir, "generators.json");

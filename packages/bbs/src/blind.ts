@@ -1,26 +1,54 @@
 /**
  * Blind BBS: draft-irtf-cfrg-bbs-blind-signatures.
  *
- * BUILD ORDER STEPS 4-6.
+ * SCOPE WARNING — the spec's committed-disclosure rewrite (PR #38, 2026-07-03) defines three
+ * disclosure modes: DISCLOSE, HIDE and COMMIT. **We implement DISCLOSE and HIDE only. COMMIT
+ * is deliberately out of scope.** Two reasons, and the second is the real one:
  *
- * SCOPE WARNING — the spec defines three disclosure modes: DISCLOSE, HIDE and COMMIT.
- * **We implement DISCLOSE and HIDE only. COMMIT is deliberately out of scope.**
- *
- * COMMIT looks like exactly what this project needs (a per-presentation re-randomized
- * commitment to a hidden signed message, `C_i = Y_0 * s_i + Y_1 * messages[idx]`). Two reasons
- * we skip it, and the second is the real one:
- *
- *   1. It is the least settled thing in the draft — zero fixtures cover it, and PR #38
- *      rewrote committed disclosure on 2026-07-03.
+ *   1. It is the least settled thing in the draft — zero fixtures cover it, and the vectors
+ *      pinned here (spec commit 56b032e) still carry the pre-rewrite wire format: a blind
+ *      proof is a plain BBS proof over the combined generator vector, with no framing and no
+ *      commitment section. This module matches the fixtures, not the unfixtured new text.
  *   2. We don't need it. `packages/proofs` gets the identical capability from a Pedersen
  *      commitment statement plus witness equality, built from parts the link secret requires
  *      anyway. COMMIT mode is the spec's convenience for people without a composite framework.
  *
  * Full argument: docs/FINDINGS.md §2. Do not add COMMIT here without reading it.
+ *
+ * Index spaces, because every bug in this file is an off-by-one between them:
+ *   - "message space": signer messages 0..L-1, then committed messages L..L+M-1.
+ *   - "proof space": signer scalars 0..L-1, the secret_prover_blind at L (always hidden,
+ *     zero when no commitment was used), then committed scalars L+1..L+M.
+ *   proofIndex(i) = i < L ? i : i + 1.
  */
 
-import type { Ciphersuite } from "./ciphersuite.js";
-import type { G1Point, G2Point, Proof, Scalar, Signature } from "./core.js";
+import { bls12_381 } from "@noble/curves/bls12-381.js";
+import type { Ciphersuite, PointG1 } from "./ciphersuite.js";
+import {
+  calculateDomain,
+  coreProofGen,
+  coreProofVerify,
+  coreVerify,
+  createGeneratorPoints,
+  finalizeSign,
+  g1FromBytes,
+  g2FromBytes,
+  messagesToScalars,
+  mul,
+  sumOfProducts,
+  type G1Point,
+  type G2Point,
+  type Proof,
+  type ProofGenOptions,
+  type Scalar,
+  type Signature,
+  type SignOptions,
+} from "./core.js";
+import { calculateRandomScalars, type RandomScalars } from "./random.js";
+import { concatBytes, i2osp, os2ip, utf8 } from "./utils.js";
+
+const Fr = bls12_381.fields.Fr;
+const G1 = bls12_381.G1.Point;
 
 /** How a signed message is presented. COMMIT is intentionally absent — see the module note. */
 export type MessageDisclosure = "DISCLOSE" | "HIDE";
@@ -36,6 +64,111 @@ export interface CommitmentWithProof {
   readonly secretProverBlind: Scalar;
 }
 
+export interface CommitOptions {
+  readonly randomScalars?: RandomScalars;
+}
+
+// ---------------------------------------------------------------------------
+// Commitment (blind spec 4.1, 4.2.1, 4.2.2)
+// ---------------------------------------------------------------------------
+
+/** `calculate_blind_challenge`: H2S(M || blind_generators || C || Cbar). */
+function blindChallenge(
+  suite: Ciphersuite,
+  C: PointG1,
+  Cbar: PointG1,
+  blindGenerators: readonly PointG1[],
+  apiId: string,
+): Scalar {
+  const octs = concatBytes(
+    i2osp(blindGenerators.length - 1, 8),
+    ...blindGenerators.map((p) => p.toBytes()),
+    C.toBytes(),
+    Cbar.toBytes(),
+  );
+  return suite.hashToScalar(octs, utf8(`${apiId}H2S_`));
+}
+
+interface ParsedCommitment {
+  readonly C: PointG1;
+  readonly sHat: Scalar;
+  readonly mHats: readonly Scalar[];
+  readonly challenge: Scalar;
+}
+
+/** `octets_to_commitment_with_proof`. Throws on malformed input. */
+function octetsToCommitmentWithProof(
+  suite: Ciphersuite,
+  octets: Uint8Array,
+): ParsedCommitment {
+  const { pointLength, scalarLength, order } = suite;
+  const scalarsLength = octets.length - pointLength;
+  if (scalarsLength < 2 * scalarLength || scalarsLength % scalarLength !== 0) {
+    throw new Error("commitment: bad length");
+  }
+  const C = g1FromBytes(suite, octets.slice(0, pointLength), "commitment C");
+  const scalars: Scalar[] = [];
+  for (let at = pointLength; at < octets.length; at += scalarLength) {
+    const s = os2ip(octets.slice(at, at + scalarLength));
+    if (s === 0n || s >= order) throw new Error("commitment: scalar out of range");
+    scalars.push(s);
+  }
+  return {
+    C,
+    sHat: scalars[0]!,
+    mHats: scalars.slice(1, -1),
+    challenge: scalars[scalars.length - 1]!,
+  };
+}
+
+/** The number of committed messages implied by a serialized commitment-with-proof. */
+export function committedMessageCount(suite: Ciphersuite, commitmentWithProof: Uint8Array): number {
+  if (commitmentWithProof.length === 0) return 0;
+  const M =
+    (commitmentWithProof.length - suite.pointLength - 2 * suite.scalarLength) /
+    suite.scalarLength;
+  if (!Number.isInteger(M) || M < 0) throw new Error("commitment: bad length");
+  return M;
+}
+
+/**
+ * `deserialize_and_validate_commit`: parse, check the generator count, and verify the
+ * commitment's proof of correctness (`CoreCommitVerify`). Returns the commitment point, or
+ * Identity_G1 when no commitment was supplied. Throws on anything invalid.
+ */
+export function deserializeAndValidateCommit(
+  suite: Ciphersuite,
+  commitmentWithProof: Uint8Array,
+  blindGenerators: readonly PointG1[],
+  apiId: string,
+): PointG1 {
+  if (commitmentWithProof.length === 0) return G1.ZERO;
+  const { C, sHat, mHats, challenge } = octetsToCommitmentWithProof(suite, commitmentWithProof);
+  if (mHats.length + 1 !== blindGenerators.length) {
+    throw new Error("commitment: generator count mismatch");
+  }
+  const Q2 = blindGenerators[0]!;
+  // CoreCommitVerify: Cbar = Σ J_i * m^_i + Q_2 * s^ - C * cp, then re-derive the challenge.
+  const Cbar = sumOfProducts(blindGenerators.slice(1), mHats)
+    .add(mul(Q2, sHat))
+    .add(mul(C.negate(), challenge));
+  const cv = blindChallenge(suite, C, Cbar, blindGenerators, apiId);
+  if (cv !== challenge) throw new Error("commitment: proof of correctness failed");
+  return C;
+}
+
+/** Signer-side convenience: is this commitment-with-proof well formed and correct? */
+export function verifyCommitment(suite: Ciphersuite, commitmentWithProof: Uint8Array): boolean {
+  try {
+    const M = committedMessageCount(suite, commitmentWithProof);
+    const blindGenerators = createGeneratorPoints(suite, M + 1, `BLIND_${suite.blindApiId}`);
+    deserializeAndValidateCommit(suite, commitmentWithProof, blindGenerators, suite.blindApiId);
+    return commitmentWithProof.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Step 4. Target: `commit/*.json` (2 cases).
  *
@@ -43,55 +176,248 @@ export interface CommitmentWithProof {
  * real case and it is the one people get wrong.
  */
 export function commit(
-  _suite: Ciphersuite,
-  _committedMessages: readonly Uint8Array[],
+  suite: Ciphersuite,
+  committedMessages: readonly Uint8Array[],
+  options: CommitOptions = {},
 ): CommitmentWithProof {
-  throw new Error("not implemented: commit — build order step 4, see docs/BRIEF.md");
+  const apiId = suite.blindApiId;
+  const scalars = messagesToScalars(suite, committedMessages, apiId);
+  const M = scalars.length;
+  const blindGenerators = createGeneratorPoints(suite, M + 1, `BLIND_${apiId}`);
+  const Q2 = blindGenerators[0]!;
+  const J = blindGenerators.slice(1);
+
+  const rng = options.randomScalars ?? ((count: number) => calculateRandomScalars(suite, count));
+  const random = rng(M + 2);
+  if (random.length !== M + 2) throw new Error("commit: random scalar source miscounted");
+  const [secretProverBlind, sTilde] = random as [Scalar, Scalar];
+  const mTildes = random.slice(2);
+
+  const C = mul(Q2, secretProverBlind).add(sumOfProducts(J, scalars));
+  const Cbar = mul(Q2, sTilde).add(sumOfProducts(J, mTildes));
+  const challenge = blindChallenge(suite, C, Cbar, blindGenerators, apiId);
+
+  const sHat = Fr.add(Fr.create(sTilde), Fr.mul(Fr.create(secretProverBlind), challenge));
+  const mHats = mTildes.map((mTilde, i) =>
+    Fr.add(Fr.create(mTilde), Fr.mul(Fr.create(scalars[i]!), challenge)),
+  );
+
+  const commitmentWithProof = concatBytes(
+    C.toBytes(),
+    i2osp(sHat, suite.scalarLength),
+    ...mHats.map((m) => i2osp(m, suite.scalarLength)),
+    i2osp(challenge, suite.scalarLength),
+  );
+  return { commitmentWithProof, secretProverBlind };
 }
 
-/** Step 5. Target: `signature/signature001..004.json`. */
+// ---------------------------------------------------------------------------
+// Blind signing (blind spec 4.1.2, 4.2.3) and verification
+// ---------------------------------------------------------------------------
+
+/** Step 5. Target: `signature/signature001..004.json`. Empty `commitmentWithProof` = none. */
 export function blindSign(
-  _suite: Ciphersuite,
-  _sk: Scalar,
-  _pk: G2Point,
-  _commitmentWithProof: Uint8Array,
-  _header: Uint8Array,
-  _signerMessages: readonly Uint8Array[],
+  suite: Ciphersuite,
+  secretKey: Scalar,
+  publicKey: G2Point,
+  commitmentWithProof: Uint8Array,
+  header: Uint8Array,
+  signerMessages: readonly Uint8Array[],
+  options: SignOptions = {},
 ): Signature {
-  throw new Error("not implemented: blindSign — build order step 5");
+  const apiId = suite.blindApiId;
+  g2FromBytes(publicKey, "public key");
+  const L = signerMessages.length;
+  const M = committedMessageCount(suite, commitmentWithProof);
+
+  const generators = createGeneratorPoints(suite, L + 1, apiId);
+  const blindGenerators = createGeneratorPoints(suite, M + 1, `BLIND_${apiId}`);
+  const commitment = deserializeAndValidateCommit(
+    suite,
+    commitmentWithProof,
+    blindGenerators,
+    apiId,
+  );
+  const scalars = messagesToScalars(suite, signerMessages, apiId);
+
+  // B_calculate: domain covers the full combined generator vector, commitment folds into B.
+  const combined = [...generators, ...blindGenerators];
+  const domain = calculateDomain(suite, publicKey, combined, header, apiId);
+  let B = suite.P1
+    .add(mul(generators[0]!, domain))
+    .add(sumOfProducts(generators.slice(1), scalars));
+  if (!commitment.equals(G1.ZERO)) B = B.add(commitment);
+  options.traceSink?.({ B: B.toBytes(), domain });
+  return finalizeSign(suite, secretKey, B, apiId);
+}
+
+/**
+ * `VerifyBlindSign`: holder-side check of a received blind signature, over the signer's
+ * messages plus the holder's committed messages and secret prover blind.
+ */
+export function blindVerify(
+  suite: Ciphersuite,
+  publicKey: G2Point,
+  signature: Signature,
+  header: Uint8Array,
+  signerMessages: readonly Uint8Array[],
+  committedMessages: readonly Uint8Array[],
+  secretProverBlind: Scalar,
+): boolean {
+  try {
+    const apiId = suite.blindApiId;
+    const L = signerMessages.length;
+    const M = committedMessages.length;
+    const generators = createGeneratorPoints(suite, L + 1, apiId);
+    const blindGenerators = createGeneratorPoints(suite, M + 1, `BLIND_${apiId}`);
+    const scalars = [
+      ...messagesToScalars(suite, signerMessages, apiId),
+      Fr.create(secretProverBlind),
+      ...messagesToScalars(suite, committedMessages, apiId),
+    ];
+    return coreVerify(
+      suite,
+      publicKey,
+      signature,
+      [...generators, ...blindGenerators],
+      header,
+      scalars,
+      apiId,
+    );
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Blind proofs (blind spec 4.1.4, 4.1.5 — pre-committed-disclosure form)
+// ---------------------------------------------------------------------------
+
+function disclosureIndexes(
+  messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
+  total: number,
+): number[] {
+  if (messageDisclosures.size !== total) {
+    throw new Error("messageDisclosures must cover every signed message index exactly");
+  }
+  const disclosed: number[] = [];
+  for (let i = 0; i < total; i++) {
+    const d = messageDisclosures.get(i);
+    if (d === undefined) {
+      throw new Error("messageDisclosures must cover every signed message index exactly");
+    }
+    if (d !== "DISCLOSE" && d !== "HIDE") throw new Error(`unsupported disclosure: ${String(d)}`);
+    if (d === "DISCLOSE") disclosed.push(i);
+  }
+  return disclosed;
 }
 
 /**
  * Step 6. Target: `proof/*.json` (8 cases, all DISCLOSE/HIDE permutations).
  *
- * `messageDisclosures` maps every signed index to DISCLOSE or HIDE. The spec validates that the
- * map's keys are *exactly* the full index set — a partial map is INVALID, not a default.
+ * `messageDisclosures` maps every signed index — signer messages first, then committed
+ * messages — to DISCLOSE or HIDE. A partial map is INVALID, not a default.
  */
 export function blindProofGen(
-  _suite: Ciphersuite,
-  _pk: G2Point,
-  _signature: Signature,
-  _header: Uint8Array,
-  _presentationHeader: Uint8Array,
-  _messages: readonly Uint8Array[],
-  _committedMessages: readonly Uint8Array[],
-  _secretProverBlind: Scalar,
-  _messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
+  suite: Ciphersuite,
+  publicKey: G2Point,
+  signature: Signature,
+  header: Uint8Array,
+  presentationHeader: Uint8Array,
+  messages: readonly Uint8Array[],
+  committedMessages: readonly Uint8Array[],
+  secretProverBlind: Scalar,
+  messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
+  options: ProofGenOptions = {},
 ): Proof {
-  throw new Error("not implemented: blindProofGen — build order step 6");
+  const apiId = suite.blindApiId;
+  const L = messages.length;
+  const M = committedMessages.length;
+  const disclosed = disclosureIndexes(messageDisclosures, L + M);
+
+  const generators = createGeneratorPoints(suite, L + 1, apiId);
+  const blindGenerators = createGeneratorPoints(suite, M + 1, `BLIND_${apiId}`);
+  const proofScalars = [
+    ...messagesToScalars(suite, messages, apiId),
+    Fr.create(secretProverBlind),
+    ...messagesToScalars(suite, committedMessages, apiId),
+  ];
+  const proofDisclosed = disclosed.map((i) => (i < L ? i : i + 1));
+
+  const proof = coreProofGen(
+    suite,
+    publicKey,
+    signature,
+    [...generators, ...blindGenerators],
+    header,
+    presentationHeader,
+    proofScalars,
+    proofDisclosed,
+    apiId,
+    options.randomScalars ?? ((count) => calculateRandomScalars(suite, count)),
+    options.traceSink,
+  );
+
+  // Re-key the Schnorr blindings from proof space back to the caller's message space,
+  // dropping the prover-blind slot (proof index L) — it is per-credential randomness with
+  // no cross-statement use.
+  const messageBlindings = new Map<number, Scalar>();
+  for (const [proofIndex, blinding] of proof.messageBlindings ?? []) {
+    if (proofIndex === L) continue;
+    messageBlindings.set(proofIndex < L ? proofIndex : proofIndex - 1, blinding);
+  }
+  return { ...proof, messageBlindings };
 }
 
+/**
+ * Verifies a blind BBS proof. `disclosedMessages` is keyed in message space (signer messages
+ * first, then committed), and `messageDisclosures` must cover every signed message index —
+ * its DISCLOSE set has to match `disclosedMessages` exactly. Fails closed.
+ */
 export function blindProofVerify(
-  _suite: Ciphersuite,
-  _pk: G2Point,
-  _proof: Proof,
-  _header: Uint8Array,
-  _presentationHeader: Uint8Array,
-  _disclosedMessages: ReadonlyMap<number, Uint8Array>,
-  _messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
-  _issuerKnownMessagesNo: number,
+  suite: Ciphersuite,
+  publicKey: G2Point,
+  proof: Proof,
+  header: Uint8Array,
+  presentationHeader: Uint8Array,
+  disclosedMessages: ReadonlyMap<number, Uint8Array>,
+  messageDisclosures: ReadonlyMap<number, MessageDisclosure>,
+  issuerKnownMessagesNo: number,
 ): boolean {
-  throw new Error("not implemented: blindProofVerify — build order step 6");
+  try {
+    const apiId = suite.blindApiId;
+    const total = messageDisclosures.size;
+    const disclosed = disclosureIndexes(messageDisclosures, total);
+    if (!Number.isInteger(issuerKnownMessagesNo) || issuerKnownMessagesNo < 0) return false;
+    if (issuerKnownMessagesNo > total) return false;
+    if (disclosedMessages.size !== disclosed.length) return false;
+    for (const i of disclosed) if (!disclosedMessages.has(i)) return false;
+
+    const generators = createGeneratorPoints(suite, issuerKnownMessagesNo + 1, apiId);
+    const blindGenerators = createGeneratorPoints(
+      suite,
+      total - issuerKnownMessagesNo + 1,
+      `BLIND_${apiId}`,
+    );
+    const dst = utf8(`${apiId}MAP_MSG_TO_SCALAR_AS_HASH_`);
+    const disclosedScalars = new Map<number, Scalar>();
+    for (const i of disclosed) {
+      const proofIndex = i < issuerKnownMessagesNo ? i : i + 1;
+      disclosedScalars.set(proofIndex, suite.hashToScalar(disclosedMessages.get(i)!, dst));
+    }
+    return coreProofVerify(
+      suite,
+      publicKey,
+      proof,
+      [...generators, ...blindGenerators],
+      header,
+      presentationHeader,
+      disclosedScalars,
+      apiId,
+    );
+  } catch {
+    return false;
+  }
 }
 
 export type { G1Point, G2Point };

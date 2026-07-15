@@ -14,27 +14,47 @@ export {
   type Ciphersuite,
   type CiphersuiteId,
   type FixtureDir,
+  type PointG1,
+  type PointG2,
 } from "./ciphersuite.js";
 
 export {
   FIXTURE_SEED,
   calculateRandomScalars,
+  mockRandomScalars,
   mockedCalculateRandomScalars,
   type MockRngParameters,
+  type RandomScalars,
 } from "./random.js";
 
 export {
+  calculateDomain,
+  coreProofGen,
+  coreProofVerify,
+  coreVerify,
+  createGeneratorPoints,
   createGenerators,
+  finalizeSign,
   keyGen,
+  messagesToScalars,
+  octetsToProof,
+  octetsToSignature,
   proofGen,
+  proofToOctets,
   proofVerify,
   sign,
+  signatureToOctets,
+  skToPk,
   verify,
   type G1Point,
   type G2Point,
   type KeyPair,
   type Proof,
+  type ProofGenOptions,
+  type ProofGenTrace,
   type Scalar,
+  type SignOptions,
+  type SignTrace,
   type Signature,
 } from "./core.js";
 
@@ -42,7 +62,14 @@ export {
   blindProofGen,
   blindProofVerify,
   blindSign,
+  blindVerify,
   commit,
+  committedMessageCount,
+  deserializeAndValidateCommit,
+  verifyCommitment,
+  type CommitOptions,
   type CommitmentWithProof,
   type MessageDisclosure,
 } from "./blind.js";
+
+export { bytesToHex, hexToBytes } from "./utils.js";

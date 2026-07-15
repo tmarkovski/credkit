@@ -188,3 +188,46 @@ noble-based stack verifies server-side. That verdict stops existing.
 
 This is why "rewrite the crypto in TS" has an architectural return and not just a privacy one.
 Treat no-WASM as a hard constraint, not a preference.
+
+## 10. Implementation findings (2026-07-15, first full implementation pass)
+
+Recorded by the agent that implemented steps 1–6. All 117 tests green on both ciphersuites,
+every trace intermediate asserted.
+
+**The pinned fixtures use the PRE-committed-disclosure wire format.** The spec text at pin
+`56b032e` (and the vendored snapshot) already describes the PR #38 rewrite: framed proofs
+(`I2OSP(bbs_proof_len, 8) || bbs_proof || I2OSP(N, 8) || …`), `Y_0/Y_1` commitment generators,
+and a challenge that appends a serialized commitment array. The fixtures were NOT regenerated
+for it — the spec's own test-vectors section says "being revised" and is commented out.
+Evidence: every `proof` field starts with `Abar` and ends with `challenge` (no length framing,
+no commitment count), and `mockRngParameters.proof.count` is always `5 + U`, never `5 + U + 2N`.
+The implementation therefore targets the pre-#38 form: a blind proof is a plain BBS proof over
+the combined generator vector `[Q_1, H_1..H_L, Q_2, J_1..J_M]`, with `secret_prover_blind` as an
+always-hidden extra message at proof index L — present as zero even when no commitment was used
+(confirmed by proof008: U = 6 over a 10-message no-commitment signature). When the spec
+regenerates vectors, expect the wire format to change: re-read §2 and re-pin deliberately.
+
+**Two upstream fixture defects in the bls12-381-sha-256 set at pin `56b032e`** (verified
+byte-identical in the upstream repo at the pin AND on main as of 2026-07-15 — these are spec-repo
+data bugs, not vendoring damage; consider filing upstream):
+
+- `signature003.json`: `trace.domain` is 96 hex chars (point-sized) and holds the true **B**;
+  `trace.B` holds an unrelated point. The `signature` bytes are correct — we reproduce them.
+  The test keys on the malformed shape (domain length ≠ 64) so a fixed upstream file
+  automatically re-enables the strict assertions.
+- `proof005.json`: `commitmentWithProof` is `proof001`'s value plus a stray trailing `"s"`
+  (545 hex chars — not even valid hex). The `proof` bytes are correct. Tests derive the
+  committed-message count from the proof's own size instead of trusting that field.
+
+**The `create_generators` seed label has no trailing underscore.** `generator_seed = api_id ||
+"MESSAGE_GENERATOR_SEED"` (22 bytes), while both DSTs (`SIG_GENERATOR_SEED_`,
+`SIG_GENERATOR_DST_`) end in `_`. Writing `MESSAGE_GENERATOR_SEED_` produces plausible-looking
+generators that fail every fixture from step 2 onward. Cross-checked against
+`@digitalbazaar/bbs-signatures` `lib/bbs/util.js`.
+
+**noble/curves 2.x SHAKE-256 hash-to-curve.** The typed per-call options of
+`bls12_381.G1.hashToCurve` only admit `DST`, but the runtime merges every RFC 9380 option
+(`Object.assign` over the hasher defaults), which is what lets the XOF suite reuse the G1 SSWU
+pipeline with `expand: "xof", hash: shake256, k: 128`. This is relied upon in
+`ciphersuite.ts` and pinned by the generators fixture test — a noble upgrade that stops merging
+would go red there first, both suites.
