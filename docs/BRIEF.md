@@ -124,8 +124,9 @@ Not your problem yet, but it explains the API constraints above:
   Schnorr blinding under the merged challenge — the Pedersen indirection §7 planned turned
   out to be unnecessary for a sigma-protocol backend (FINDINGS §12). *(Built.)*
 - **`packages/cryptosuite`** — the JSON-LD suite. Bespoke; no interop pretense. *(Built —
-  design in FINDINGS §14, implementation record in §15. Single-credential; the N-statement
-  presentation envelope is designed in §16 and is the one piece still outstanding.)*
+  design in FINDINGS §14, implementation record in §15. The N-statement presentation envelope
+  — a VP under a second `credkit-bbs-presentation-*` cryptosuite — is designed in §16 and
+  built in §17: N credentials, one merged challenge, link-secret equality across them.)*
 
 The composite and predicate layers underneath are now also written up spec-style, for readers
 who speak IETF/W3C drafts rather than TypeScript, in

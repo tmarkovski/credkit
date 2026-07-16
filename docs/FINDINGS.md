@@ -757,3 +757,76 @@ VC-level proof is built, tested, and pinned, and is what a single-credential ver
 wants. The lean is to keep it, DEFINED as the N=1 projection with a shared descriptor
 structure — but either way the current wire format changes, and §12's rule applies: bump the
 version, never edit the hex.
+
+## 17. The presentation envelope: implementation record (2026-07-16, first pass)
+
+Built as designed in §16, with the one open question resolved the way §16 leaned. All the
+design decisions above held on contact with code; what follows is what the implementation
+pinned down, and the one place the *how* is worth recording separately from the *what*.
+
+**The VC-level derived proof stays, and N=1 is a shared structure, not a shared wire.** §16's
+open question was whether to keep the single-credential derived proof or make it literally the
+N=1 case of the VP. Resolved: keep it, and share the *code*, not the *bytes*. The fused
+derived envelope (prefixes `0x03`/`0x05`) is untouched — its golden vectors are still green,
+byte-for-byte, so nothing ever issued or pinned moved (§12's rule kept without a version bump).
+What N=1-is-the-projection actually means in the code is `statement.ts`: one `prepareStatement`
+(prove) and one `reconstructStatement` (verify) that BOTH the single-credential path
+(`present.ts`) and the VP path (`presentation.ts`) call. The two arities cannot drift because
+the per-credential work is one function per direction; only the top-level grouping differs
+(fused array vs. one descriptor per credential plus a presentation part). This is the honest
+reading of "shared descriptor structure" — a shared *constructor*, not a second spelling of the
+same envelope.
+
+**Three new envelope prefixes, in the reserved range.** `0x06` statement descriptor
+(baseline), `0x07` statement descriptor (holder-bound), `0x08` presentation envelope — all
+under `0xd9 0x63 0x0N`, disjoint from base/derived and from bbs-2023. Mode still rides the
+prefix, as base/derived do. A descriptor fed to a derived-proof verify entry point fails on the
+prefix, and vice versa; the multibase heads are stable and cheap to assert (`u2WMG`/`u2WMH` for
+descriptors, `u2WMI` for the presentation envelope), so a test pins them.
+
+**The descriptor carries no verificationMethod after all.** §16 said the descriptor should hold
+the issuer's verificationMethod *identifier*. In the VP shape it doesn't need to: each embedded
+credential is a JSON-LD object with its own `proof`, and `verificationMethod` is already a
+sibling field there (the same object that carries `cryptosuite` and `type`). The descriptor is
+only that proof's `proofValue`. So the identifier lives where DI already puts it, and the
+descriptor stays pure reconstruction data. One fewer field, same binding — proofHash
+recanonicalizes the proof config, verificationMethod included.
+
+**Two new cryptosuite ids, paired to their credential suite by ciphersuite.**
+`credkit-bbs-presentation-sha-2026` binds `credkit-bbs-sha-2026` credentials, `-shake-` binds
+`-shake-`. `presentGraph` refuses a mixed-suite credential list loudly (the link secret's
+scalar is suite-dependent — §16); `verifyGraph` refuses any embedded credential whose
+`cryptosuite` is not the one its presentation suite pins. Enforced on both sides, as §16 asked.
+
+**`holder` is unrepresentable end to end.** `presentGraph` never constructs it, and `verifyGraph`
+rejects a VP that carries one — so the correlation handle §16 warned about cannot appear whether
+the prover or a middlebox tries to add it. The VP body is otherwise an unhashed carrier: the
+binding is per-credential (each BBS signature) plus the merged transcript (which absorbs every
+statement's key, header, counts, and disclosed pairs), so a swap or reorder of credentials
+breaks the challenge for free — confirmed by a test that reverses the credential array and
+watches verification fail, *once the two credentials differ in disclosed content*. That caveat
+is the one thing the code taught that the design under-stated: two credentials identical in
+everything BOUND and DISCLOSED (same issuer DID, same mandatory content, same header) are
+genuinely interchangeable, so reordering them is a valid no-op, not an attack. The transcript
+binds what is disclosed and signed, not the accident of array position.
+
+**Challenge and domain fold into the header, and the header is built from the verifier's own
+values.** `encodePresentationHeader(challenge, domain)` is labeled and length-prefixed, domain
+absorbed even when empty. The VP proof echoes both (DI conformance, self-description), but
+`verifyGraph` reconstructs the header from the nonce and audience the VERIFIER supplies, never
+from the wire — so a replayed VP fails on the challenge it was not issued for, and a proof made
+for one audience fails at another. The wire copies are additionally checked equal, to keep the
+proof honest rather than merely unverifiable.
+
+**Claim and equality lists are matched positionally, statement-major.** Same §11 discipline as
+the single-credential path, extended with a statement index: both sides state the same list in
+the same order, and a mismatch fails rather than being reconciled. Equalities are symbolic on
+the wire (`{statement, linkSecret}` or `{statement, pointer}`), resolved to message indexes
+inside the layer against each statement's descriptor — never a raw index, because L differs per
+credential (§16). The verifier states the equalities it requires; a proof that carries a
+different set (or none) fails the count/structure check before any curve math.
+
+**Test count: 92 in `packages/cryptosuite` (was 73), 371 across the workspace.** The payoff
+test is two holder-bound credentials from two issuers, one link-secret equality, verified under
+one challenge with neither secret nor any hidden value on the wire — the README's last gap,
+closed.

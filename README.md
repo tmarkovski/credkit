@@ -30,18 +30,21 @@ See [docs/FINDINGS.md](docs/FINDINGS.md) for how that diagnosis turned into this
 
 ## Status
 
-All four layers are implemented and green (352 tests, both ciphersuites): `packages/bbs`
+All four properties are implemented and green (371 tests, both ciphersuites): `packages/bbs`
 passes all 33 vendored spec vectors; `packages/proofs` does linked presentations (the link
 secret) under one merged challenge; `packages/range` does CCS range and set-membership
 predicates over hidden numeric messages; `packages/cryptosuite` issues and verifies real
 JSON-LD credentials — proving age over 18 while the birthDate never reaches the wire, which
-is the thing the incumbent stack cannot do without a correlation handle.
+is the thing the incumbent stack cannot do without a correlation handle — and now presents
+**N credentials under one challenge** in a Verifiable Presentation, proving two credentials
+belong to the same holder without disclosing who.
 
-**One gap remains.** Each cryptosuite proof carries one credential. The link secret is
-signed, hidden, and reachable, but proving two credentials belong to the same holder needs a
-presentation envelope carrying N statements — built at the `packages/proofs` layer, not yet
-exposed at the JSON-LD layer. Designed in FINDINGS §16 (a Verifiable Presentation under a
-second cryptosuite); not yet implemented.
+That last piece — the presentation envelope (FINDINGS §16, §17) — is a second Data Integrity
+cryptosuite (`credkit-bbs-presentation-*`) over a standard VP: each embedded credential
+carries a reconstruction descriptor, and one VP-level proof carries the merged presentation
+across all statements. The link secret is signed, hidden, and now provably equal across
+credentials in a single presentation. All four of the properties above hold at once, in one
+JSON-LD document, with nothing to correlate on.
 
 **Start at [docs/BRIEF.md](docs/BRIEF.md).**
 

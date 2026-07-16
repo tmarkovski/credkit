@@ -80,9 +80,9 @@ on top:
   under the shared challenge. The value stays hidden; only the predicate's truth is revealed.
 
 A JSON-LD cryptosuite that packages these presentations into W3C Verifiable Credentials
-[@VC-DATA-MODEL] in the manner of `bbs-2023` is implemented for the single-credential case and
-summarized in (#the-cryptosuite-layer); the multi-credential presentation envelope is designed
-but not yet built, and the suite's full specification is out of scope here.
+[@VC-DATA-MODEL] in the manner of `bbs-2023`, together with a second cryptosuite that carries N
+of them under one challenge in a Verifiable Presentation, is implemented and summarized in
+(#the-cryptosuite-layer); the suite's full specification is out of scope here.
 
 ## What this document is, and is not
 
@@ -201,7 +201,7 @@ using more than one challenge breaks all of them in the same way (see (#one-chal
 
 ```
   +-------------------------------------------------------------+
-  |  JSON-LD cryptosuite  (single-credential; motiv. bbs-2023)  |
+  |  JSON-LD cryptosuite  (VC + VP envelope; motiv. bbs-2023)   |
   +-------------------------------------------------------------+
   |  Composite presentations                                    |
   |    - merged Fiat-Shamir transcript                          |
@@ -763,9 +763,9 @@ predicates, and the parameters used, are of course visible in the spec both part
 # The cryptosuite layer {#the-cryptosuite-layer}
 
 A JSON-LD Data Integrity cryptosuite that packages these presentations as W3C Verifiable
-Credentials [@VC-DATA-MODEL], in the manner of `bbs-2023` [@DI-BBS], is implemented for the
-single-credential case. It is summarized here to place the layers above in context; its full
-specification is a separate matter and is not attempted in this document.
+Credentials [@VC-DATA-MODEL], in the manner of `bbs-2023` [@DI-BBS], is implemented for both the
+single-credential and the multi-credential case. It is summarized here to place the layers above
+in context; its full specification is a separate matter and is not attempted in this document.
 
 - **Kept** from `bbs-2023`: RDF Dataset Canonicalization of the credential, the per-base-proof
   HMAC label shuffle, the JSON-Pointer split between mandatory and selectively disclosed
@@ -792,17 +792,19 @@ specification is a separate matter and is not attempted in this document.
   declared the same encoder.
 
 The multi-credential case — N credentials under one merged challenge inside a Verifiable
-Presentation — is designed but not yet built. The intended shape is a Verifiable Presentation
-secured by a *second* Data Integrity cryptosuite: each embedded credential carries a *statement
-descriptor* (its reconstruction data — mode, label map, index sets, N-Quads, numeric declaration,
-and the issuer's verification-method identifier, never a key), and the presentation-level proof
-carries the merged credkit presentation of (#composite-presentations) together with the equality
-constraints and per-statement claim lists. The `@container: @graph` semantics of the VC v2 context
-mean the presentation body is a carrier the presentation proof need not hash over — each credential
-is already bound by its own BBS signature and absorbed into the merged transcript — so reordering
-or substituting credentials breaks the challenge without an envelope-level integrity check. The
-design record and its rationale are FINDINGS §14–§16 in the repository; this document specifies the
-presentation and predicate layer those build on, not the cryptosuite envelope.
+Presentation — is secured by a *second* Data Integrity cryptosuite. Each embedded credential
+carries a *statement descriptor* (its reconstruction data — mode, label map, index sets, N-Quads,
+numeric declaration); the issuer's verification-method identifier is the credential proof's own
+sibling field, never a key. The presentation-level proof carries the merged credkit presentation
+of (#composite-presentations) together with the equality constraints and per-statement claim
+lists. The `@container: @graph` semantics of the VC v2 context mean the presentation body is a
+carrier the presentation proof need not hash over — each credential is already bound by its own
+BBS signature and absorbed into the merged transcript — so reordering or substituting credentials
+that differ in disclosed content breaks the challenge without an envelope-level integrity check.
+One ciphersuite is pinned across the whole presentation (the link-secret witness is
+suite-dependent), and a holder identifier is unrepresentable by construction. The design record
+and its rationale are FINDINGS §14–§17 in the repository; this document specifies the presentation
+and predicate layer those build on, not the cryptosuite envelope.
 
 # IANA considerations
 

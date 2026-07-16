@@ -49,22 +49,53 @@ export {
 } from "./present.js";
 
 export {
+  presentGraph,
+  verifyGraph,
+  type ExpectedMembershipClaim,
+  type ExpectedRangeClaim,
+  type GraphCredentialInput,
+  type GraphEquality,
+  type GraphEqualityRef,
+  type PresentGraphOptions,
+  type VerifyGraphOptions,
+  type VerifyGraphResult,
+} from "./presentation.js";
+
+export { encodePresentationHeader } from "./statement.js";
+
+export {
   parseBaseProofValue,
   parseDerivedProofValue,
+  parsePresentationEnvelope,
+  parseStatementDescriptor,
   serializeBaseProofValue,
   serializeDerivedProofValue,
+  serializePresentationEnvelope,
+  serializeStatementDescriptor,
   type BaseProofData,
   type DerivedProofData,
   type MembershipClaim,
+  type PresentationEnvelopeData,
   type ProofMode,
   type RangeClaim,
+  type StatementDescriptorData,
+  type StatementMembershipClaim,
+  type StatementRangeClaim,
+  type WireEquality,
+  type WireEqualityRef,
 } from "./proofValue.js";
 
 export {
+  CRYPTOSUITE_PRESENTATION_SHA,
+  CRYPTOSUITE_PRESENTATION_SHAKE,
   CRYPTOSUITE_SHA,
   CRYPTOSUITE_SHAKE,
   PROOF_TYPE,
   ciphersuiteFor,
+  credentialSuiteForPresentation,
   isCryptosuiteName,
+  isPresentationCryptosuiteName,
+  presentationSuiteForCredential,
   type CryptosuiteName,
+  type PresentationCryptosuiteName,
 } from "./suite.js";
