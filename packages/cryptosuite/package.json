@@ -1,10 +1,20 @@
 {
   "name": "@credkit/cryptosuite",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Bespoke JSON-LD credential cryptosuite over @credkit/proofs: bbs-2023's document pipeline with a numeric twin block for predicates over hidden values. Not bbs-2023 compliant, deliberately.",
+  "license": "Unlicense",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmarkovski/credkit.git",
+    "directory": "packages/cryptosuite"
+  },
   "main": "./src/index.ts",
+  "files": [
+    "src"
+  ],
+  "sideEffects": false,
+  "engines": { "node": ">=20" },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

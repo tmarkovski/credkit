@@ -1,10 +1,20 @@
 {
   "name": "@credkit/range",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "CCS (Camenisch-Chaabouni-shelat) set-membership range proofs over BLS12-381: Boneh-Boyen signature alphabets, digit decomposition, three-phase sigma protocol for merged Fiat-Shamir challenges.",
+  "license": "Unlicense",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmarkovski/credkit.git",
+    "directory": "packages/range"
+  },
   "main": "./src/index.ts",
+  "files": [
+    "src"
+  ],
+  "sideEffects": false,
+  "engines": { "node": ">=20" },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

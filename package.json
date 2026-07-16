@@ -2,6 +2,8 @@
   "name": "credkit",
   "private": true,
   "type": "module",
+  "license": "Unlicense",
+  "packageManager": "pnpm@10.28.0",
   "engines": { "node": ">=20" },
   "scripts": {
     "build": "pnpm -r build",

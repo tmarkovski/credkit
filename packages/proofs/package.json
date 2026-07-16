@@ -1,10 +1,20 @@
 {
   "name": "@credkit/proofs",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Composite proof framework over @credkit/bbs: multi-statement presentations, one merged Fiat-Shamir challenge, witness equality (link secrets), range predicates (via @credkit/range).",
+  "license": "Unlicense",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmarkovski/credkit.git",
+    "directory": "packages/proofs"
+  },
   "main": "./src/index.ts",
+  "files": [
+    "src"
+  ],
+  "sideEffects": false,
+  "engines": { "node": ">=20" },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
