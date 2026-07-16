@@ -1,0 +1,2645 @@
+<!DOCTYPE html>
+<html lang="en" class="Internet-Draft">
+<head>
+<meta charset="utf-8">
+<meta content="Common,Latin" name="scripts">
+<meta content="initial-scale=1.0" name="viewport">
+<title>credkit: Composite BBS Presentations with Predicates over Hidden Messages</title>
+<meta content="Tomislav Markovski" name="author">
+<meta content='
+       This document describes credkit, an experimental construction that composes multiple
+IETF BBS proofs of knowledge under a single merged Fiat-Shamir challenge, and adds
+zero-knowledge predicates — set membership and range — over signed messages that are never
+disclosed. It is written in the style of, and layered directly on top of, the CFRG BBS
+Signatures and Blind BBS Signatures drafts, and it is motivated by the W3C Verifiable
+Credentials Data Model and the  bbs-2023  Data Integrity cryptosuite. Its purpose is to record,
+for readers already fluent in those specifications, exactly where credkit reuses them, where it
+diverges, and how the pieces that neither specification provides — cross-credential witness
+equality (a "link secret"), set-membership predicates, and range predicates bound to a signed
+value — are constructed and made sound. 
+       This is a description of an experiment, not a standards-track proposal. It defines no new
+registry, claims no interoperability, and has no formal standing. It exists so the design can be
+reviewed as a design rather than as source code. 
+    ' name="description">
+<meta content="xml2rfc 3.34.0" name="generator">
+<meta content="BBS" name="keyword">
+<meta content="verifiable credentials" name="keyword">
+<meta content="zero-knowledge" name="keyword">
+<meta content="selective disclosure" name="keyword">
+<meta content="range proofs" name="keyword">
+<meta content="set membership" name="keyword">
+<meta content="unlinkability" name="keyword">
+<meta content="draft-markovski-credkit-composite-proofs-latest" name="ietf.draft">
+<!-- Generator version information:
+  xml2rfc 3.34.0
+    Python 3.14.5
+    ConfigArgParse 1.7.5
+    google-i18n-address 3.1.1
+    intervaltree 3.2.1
+    Jinja2 3.1.6
+    lxml 6.1.1
+    natsort 8.4.0
+    platformdirs 4.10.0
+    pycountry 26.2.16
+    PyYAML 6.0.3
+    requests 2.34.2
+    wcwidth 0.8.2
+-->
+<link href="draft-credkit-composite-proofs.xml" rel="alternate" type="application/rfc+xml">
+<link href="#copyright" rel="license">
+<style type="text/css">/*
+
+  NOTE: Changes at the bottom of this file overrides some earlier settings.
+
+  Once the style has stabilized and has been adopted as an official RFC style,
+  this can be consolidated so that style settings occur only in one place, but
+  for now the contents of this file consists first of the initial CSS work as
+  provided to the RFC Formatter (xml2rfc) work, followed by itemized and
+  commented changes found necessary during the development of the v3
+  formatters.
+
+*/
+
+/* fonts */
+@import url('https://static.ietf.org/fonts/noto-sans/import.css'); /* Sans-serif */
+@import url('https://static.ietf.org/fonts/noto-serif/import.css'); /* Serif (print) */
+@import url('https://static.ietf.org/fonts/roboto-mono/import.css'); /* Monospace */
+
+:root {
+  --font-sans: 'Noto Sans', Arial, Helvetica, sans-serif;
+  --font-serif: 'Noto Serif', 'Times', 'Times New Roman', serif;
+  --font-mono: 'Roboto Mono', Courier, 'Courier New', monospace;
+}
+
+@viewport {
+  zoom: 1.0;
+}
+@-ms-viewport {
+  width: extend-to-zoom;
+  zoom: 1.0;
+}
+/* general and mobile first */
+html {
+}
+body {
+  max-width: 90%;
+  margin: 1.5em auto;
+  color: #222;
+  background-color: #fff;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  scroll-behavior: smooth;
+  overflow-wrap: break-word;
+}
+.ears {
+  display: none;
+}
+
+/* headings */
+#title, h1, h2, h3, h4, h5, h6 {
+  margin: 1em 0 0.5em;
+  font-weight: bold;
+  line-height: 1.3;
+}
+#title {
+  clear: both;
+  border-bottom: 1px solid #ddd;
+  margin: 0 0 0.5em 0;
+  padding: 1em 0 0.5em;
+}
+.author {
+  padding-bottom: 4px;
+}
+h1 {
+  font-size: 26px;
+  margin: 1em 0;
+}
+h2 {
+  font-size: 22px;
+  margin-top: -20px;  /* provide offset for in-page anchors */
+  padding-top: 33px;
+}
+h3 {
+  font-size: 18px;
+  margin-top: -36px;  /* provide offset for in-page anchors */
+  padding-top: 42px;
+}
+h4 {
+  font-size: 16px;
+  margin-top: -36px;  /* provide offset for in-page anchors */
+  padding-top: 42px;
+}
+h5, h6 {
+  font-size: 14px;
+}
+#n-copyright-notice {
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 1em;
+  margin-bottom: 1em;
+}
+/* general structure */
+p {
+  padding: 0;
+  margin: 0 0 1em 0;
+  text-align: left;
+}
+div, span {
+  position: relative;
+}
+div {
+  margin: 0;
+}
+.alignRight.art-text {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  padding: 1em 1em 0;
+  margin-bottom: 1.5em;
+}
+.alignRight.art-text pre {
+  padding: 0;
+}
+.alignRight {
+  margin: 1em 0;
+}
+.alignRight > *:first-child {
+  border: none;
+  margin: 0;
+  float: right;
+  clear: both;
+}
+.alignRight > *:nth-child(2) {
+  clear: both;
+  display: block;
+  border: none;
+}
+svg {
+  display: block;
+}
+@media print {
+  svg {
+    max-height: 850px;
+    max-width: 660px;
+  }
+}
+svg[font-family~="serif" i], svg [font-family~="serif" i] {
+  font-family: var(--font-serif);
+}
+svg[font-family~="sans-serif" i], svg [font-family~="sans-serif" i] {
+  font-family: var(--font-sans);
+}
+svg[font-family~="monospace" i], svg [font-family~="monospace" i] {
+  font-family: var(--font-mono);
+}
+.alignCenter.art-text {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  padding: 1em 1em 0;
+  margin-bottom: 1.5em;
+}
+.alignCenter.art-text pre {
+  padding: 0;
+}
+.alignCenter {
+  margin: 1em 0;
+}
+.alignCenter > *:first-child {
+  display: table;
+  border: none;
+  margin: 0 auto;
+}
+
+/* lists */
+ol, ul {
+  padding: 0;
+  margin: 0 0 1em 2em;
+}
+ol ol, ul ul, ol ul, ul ol {
+  margin-left: 1em;
+}
+li {
+  margin: 0 0 0.25em 0;
+}
+.ulCompact li {
+  margin: 0;
+}
+ul.empty, .ulEmpty {
+  list-style-type: none;
+}
+ul.empty li, .ulEmpty li {
+  margin-top: 0.5em;
+}
+ul.ulBare, li.ulBare {
+  margin-left: 0em !important;
+}
+ul.compact, .ulCompact,
+ol.compact, .olCompact {
+  line-height: 100%;
+  margin: 0 0 0 2em;
+}
+
+/* definition lists */
+dl {
+}
+dl > dt {
+  float: left;
+  margin-right: 1em;
+}
+/* 
+dl.nohang > dt {
+  float: none;
+}
+*/
+dl > dd {
+  margin-bottom: .8em;
+  min-height: 1.3em;
+}
+dl.compact > dd, .dlCompact > dd {
+  margin-bottom: 0em;
+}
+dl > dd > dl {
+  margin-top: 0.5em;
+  margin-bottom: 0em;
+}
+
+/* links */
+a {
+  text-decoration: none;
+}
+a[href] {
+  color: #22e; /* Arlen: WCAG 2019 */
+}
+a[href]:hover {
+  background-color: #f2f2f2;
+}
+figcaption a[href],
+a[href].selfRef {
+  color: #222;
+}
+/* XXX probably not this:
+a.selfRef:hover {
+  background-color: transparent;
+  cursor: default;
+} */
+
+/* Figures */
+tt, code, pre {
+  background-color: #f9f9f9;
+  font-family: var(--font-mono);
+}
+pre {
+  border: 1px solid #eee;
+  margin: 0;
+  padding: 1em;
+}
+img {
+  max-width: 100%;
+}
+figure {
+  margin: 0;
+}
+figure blockquote {
+  margin: 0.8em 0.4em 0.4em;
+}
+figcaption {
+  font-style: italic;
+  margin: 0 0 1em 0;
+}
+@media screen {
+  pre {
+    overflow-x: auto;
+    max-width: 100%;
+    max-width: calc(100% - 22px);
+  }
+}
+
+/* aside, blockquote */
+aside, blockquote {
+  margin-left: 0;
+  padding: 1.2em 2em;
+}
+blockquote {
+  background-color: #f9f9f9;
+  color: #111; /* Arlen: WCAG 2019 */
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  margin: 1em 0;
+}
+blockquote > *:last-child {
+  margin-bottom: 0;
+}
+cite {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+.xref {
+  overflow-wrap: normal;
+}
+
+/* tables */
+table {
+  width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  border: 1px solid #eee;
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5em 0.75em;
+}
+th {
+  text-align: left;
+  background-color: #e9e9e9;
+}
+tr:nth-child(2n+1) > td {
+  background-color: #f5f5f5;
+}
+table caption {
+  font-style: italic;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+table p {
+  /* XXX to avoid bottom margin on table row signifiers. If paragraphs should
+     be allowed within tables more generally, it would be far better to select on a class. */
+  margin: 0;
+}
+
+/* pilcrow */
+a.pilcrow {
+  color: #666; /* Arlen: AHDJ 2019 */
+  text-decoration: none;
+  visibility: hidden;
+  user-select: none;
+  -ms-user-select: none;
+  -o-user-select:none;
+  -moz-user-select: none;
+  -khtml-user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media screen {
+  aside:hover > a.pilcrow,
+  p:hover > a.pilcrow,
+  blockquote:hover > a.pilcrow,
+  div:hover > a.pilcrow,
+  li:hover > a.pilcrow,
+  pre:hover > a.pilcrow {
+    visibility: visible;
+  }
+  a.pilcrow:hover {
+    background-color: transparent;
+  }
+}
+
+/* misc */
+hr {
+  border: 0;
+  border-top: 1px solid #eee;
+}
+.bcp14 {
+  font-variant: small-caps;
+}
+
+.role {
+  font-variant: all-small-caps;
+}
+
+/* info block */
+#identifiers {
+  margin: 0;
+  font-size: 0.9em;
+}
+#identifiers dt {
+  width: 3em;
+  clear: left;
+}
+#identifiers dd {
+  float: left;
+  margin-bottom: 0;
+}
+/* Fix PDF info block run off issue */
+@media print {
+  #identifiers dd {
+    max-width: 100%;
+  }
+}
+#identifiers .authors .author {
+  display: inline-block;
+  margin-right: 1.5em;
+}
+#identifiers .authors .org {
+  font-style: italic;
+}
+
+/* The prepared/rendered info at the very bottom of the page */
+.docInfo {
+  color: #666; /* Arlen: WCAG 2019 */
+  font-size: 0.9em;
+  font-style: italic;
+  margin-top: 2em;
+}
+.docInfo .prepared {
+  float: left;
+}
+.docInfo .prepared {
+  float: right;
+}
+
+/* table of contents */
+#toc  {
+  padding: 0.75em 0 2em 0;
+  margin-bottom: 1em;
+}
+nav.toc ul {
+  margin: 0 0.5em 0 0;
+  padding: 0;
+  list-style: none;
+}
+nav.toc li {
+  line-height: 1.3em;
+  margin: 0.75em 0;
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+}
+/* references */
+.references dt {
+  text-align: right;
+  font-weight: bold;
+  min-width: 7em;
+}
+.references dd {
+  margin-left: 8em;
+  overflow: auto;
+}
+
+.refInstance {
+  margin-bottom: 1.25em;
+}
+
+.refSubseries {
+  margin-bottom: 1.25em;
+}
+
+.references .ascii {
+  margin-bottom: 0.25em;
+}
+
+/* index */
+.index ul {
+  margin: 0 0 0 1em;
+  padding: 0;
+  list-style: none;
+}
+.index ul ul {
+  margin: 0;
+}
+.index li {
+  margin: 0;
+  text-indent: -2em;
+  padding-left: 2em;
+  padding-bottom: 5px;
+}
+.indexIndex {
+  margin: 0.5em 0 1em;
+}
+.index a {
+  font-weight: 700;
+}
+/* make the index two-column on all but the smallest screens */
+@media (min-width: 600px) {
+  .index ul {
+    -moz-column-count: 2;
+    -moz-column-gap: 20px;
+  }
+  .index ul ul {
+    -moz-column-count: 1;
+    -moz-column-gap: 0;
+  }
+}
+
+/* authors */
+address.vcard {
+  font-style: normal;
+  margin: 1em 0;
+}
+
+address.vcard .nameRole {
+  font-weight: 700;
+  margin-left: 0;
+}
+address.vcard .label {
+  font-family: var(--font-sans);
+  margin: 0.5em 0;
+}
+address.vcard .type {
+  display: none;
+}
+.alternative-contact {
+  margin: 1.5em 0 1em;
+}
+hr.addr {
+  border-top: 1px dashed;
+  margin: 0;
+  color: #ddd;
+  max-width: calc(100% - 16px);
+}
+
+/* temporary notes */
+.rfcEditorRemove::before {
+  position: absolute;
+  top: 0.2em;
+  right: 0.2em;
+  padding: 0.2em;
+  content: "The RFC Editor will remove this note";
+  color: #9e2a00; /* Arlen: WCAG 2019 */
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+}
+.rfcEditorRemove {
+  position: relative;
+  padding-top: 1.8em;
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+  border-radius: 3px;
+}
+.cref {
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+  padding: 2px 4px;
+}
+.crefSource {
+  font-style: italic;
+}
+/* alternative layout for smaller screens */
+@media screen and (max-width: 1023px) {
+  body {
+    padding-top: 2em;
+  }
+  #title {
+    padding: 1em 0;
+  }
+  h1 {
+    font-size: 24px;
+  }
+  h2 {
+    font-size: 20px;
+    margin-top: -18px;  /* provide offset for in-page anchors */
+    padding-top: 38px;
+  }
+  #identifiers dd {
+    max-width: 60%;
+  }
+  #toc {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    padding: 0;
+    margin: 0;
+    background-color: inherit;
+    border-bottom: 1px solid #ccc;
+  }
+  #toc h2 {
+    margin: -1px 0 0 0;
+    padding: 4px 0 4px 6px;
+    padding-right: 1em;
+    min-width: 190px;
+    font-size: 1.1em;
+    text-align: right;
+    background-color: #444;
+    color: white;
+    cursor: pointer;
+  }
+  #toc h2::before { /* css hamburger */
+    float: right;
+    position: relative;
+    width: 1em;
+    height: 1px;
+    left: -164px;
+    margin: 6px 0 0 0;
+    background: white none repeat scroll 0 0;
+    box-shadow: 0 4px 0 0 white, 0 8px 0 0 white;
+    content: "";
+  }
+  #toc nav {
+    display: none;
+    padding: 0.5em 1em 1em;
+    overflow: auto;
+    height: calc(100vh - 48px);
+    border-left: 1px solid #ddd;
+  }
+}
+
+/* alternative layout for wide screens */
+@media screen and (min-width: 1024px) {
+  body {
+    max-width: 724px;
+    margin: 42px auto;
+    padding-left: 1.5em;
+    padding-right: 29em;
+  }
+  #toc {
+    position: fixed;
+    top: 42px;
+    right: 42px;
+    width: 25%;
+    margin: 0;
+    padding: 0 1em;
+    z-index: 1;
+  }
+  #toc h2 {
+    border-top: none;
+    border-bottom: 1px solid #ddd;
+    font-size: 1em;
+    font-weight: normal;
+    margin: 0;
+    padding: 0.25em 1em 1em 0;
+  }
+  #toc nav {
+    display: block;
+    height: calc(90vh - 84px);
+    bottom: 0;
+    padding: 0.5em 0 0;
+    overflow: auto;
+  }
+  img { /* future proofing */
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* pagination */
+@media print {
+  body {
+    width: 100%;
+  }
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  #n-copyright-notice {
+    border-bottom: none;
+  }
+  #toc, #n-introduction {
+    page-break-before: always;
+  }
+  #toc {
+    border-top: none;
+    padding-top: 0;
+  }
+  figure, pre {
+    page-break-inside: avoid;
+  }
+  figure {
+    overflow: scroll;
+  }
+  .breakable pre {
+    break-inside: auto;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+  h2+*, h3+*, h4+*, h5+*, h6+* {
+    page-break-before: avoid;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10pt;
+  }
+  table {
+    border: 1px solid #ddd;
+  }
+  td {
+    border-top: 1px solid #ddd;
+  }
+}
+
+/* This is commented out here, as the string-set: doesn't
+   pass W3C validation currently */
+/*
+.ears thead .left {
+  string-set: ears-top-left content();
+}
+
+.ears thead .center {
+  string-set: ears-top-center content();
+}
+
+.ears thead .right {
+  string-set: ears-top-right content();
+}
+
+.ears tfoot .left {
+  string-set: ears-bottom-left content();
+}
+
+.ears tfoot .center {
+  string-set: ears-bottom-center content();
+}
+
+.ears tfoot .right {
+  string-set: ears-bottom-right content();
+}
+*/
+
+@page :first {
+  padding-top: 0;
+  @top-left {
+    content: normal;
+    border: none;
+  }
+  @top-center {
+    content: normal;
+    border: none;
+  }
+  @top-right {
+    content: normal;
+    border: none;
+  }
+}
+
+@page {
+  size: A4;
+  margin-bottom: 45mm;
+  padding-top: 20px;
+  /* The following is commented out here, but set appropriately by in code, as
+     the content depends on the document */
+  /*
+  @top-left {
+    content: 'Internet-Draft';
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-left {
+    content: string(ears-top-left);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-center {
+    content: string(ears-top-center);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-right {
+    content: string(ears-top-right);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @bottom-left {
+    content: string(ears-bottom-left);
+    vertical-align: top;
+    border-top: solid 1px #ccc;
+  }
+  @bottom-center {
+    content: string(ears-bottom-center);
+    vertical-align: top;
+    border-top: solid 1px #ccc;
+  }
+  @bottom-right {
+      content: '[Page ' counter(page) ']';
+      vertical-align: top;
+      border-top: solid 1px #ccc;
+  }
+  */
+
+}
+
+/* Changes introduced to fix issues found during implementation */
+/* Make sure links are clickable even if overlapped by following H* */
+a {
+  z-index: 2;
+}
+/* Separate body from document info even without intervening H1 */
+section {
+  clear: both;
+}
+
+
+/* Top align author divs, to avoid names without organization dropping level with org names */
+.author {
+  vertical-align: top;
+}
+
+/* Leave room in document info to show Internet-Draft on one line */
+#identifiers dt {
+  width: 8em;
+}
+
+/* Don't waste quite as much whitespace between label and value in doc info */
+#identifiers dd {
+  margin-left: 1em;
+}
+
+/* Give floating toc a background color (needed when it's a div inside section */
+#toc {
+  background-color: white;
+}
+
+/* Make the collapsed ToC header render white on gray also when it's a link */
+@media screen and (max-width: 1023px) {
+  #toc h2 a,
+  #toc h2 a:link,
+  #toc h2 a:focus,
+  #toc h2 a:hover,
+  #toc a.toplink,
+  #toc a.toplink:hover {
+    color: white;
+    background-color: #444;
+    text-decoration: none;
+  }
+}
+
+/* Give the bottom of the ToC some whitespace */
+@media screen and (min-width: 1024px) {
+  #toc {
+    padding: 0 0 1em 1em;
+  }
+}
+
+/* Style section numbers with more space between number and title */
+.section-number {
+  padding-right: 0.5em;
+}
+
+/* prevent monospace from becoming overly large */
+tt, code, pre {
+  font-size: 95%;
+}
+
+/* Fix the height/width aspect for ascii art*/
+.sourcecode pre,
+.art-text pre {
+  line-height: 1.12;
+}
+
+
+/* Add styling for a link in the ToC that points to the top of the document */
+a.toplink {
+  float: right;
+  margin-right: 0.5em;
+}
+
+/* Fix the dl styling to match the RFC 7992 attributes */
+dl > dt,
+dl.dlParallel > dt {
+  float: left;
+  margin-right: 1em;
+}
+dl.dlNewline > dt {
+  float: none;
+}
+
+/* Provide styling for table cell text alignment */
+table td.text-left,
+table th.text-left {
+  text-align: left;
+}
+table td.text-center,
+table th.text-center {
+  text-align: center;
+}
+table td.text-right,
+table th.text-right {
+  text-align: right;
+}
+
+/* Make the alternative author contact information look less like just another
+   author, and group it closer with the primary author contact information */
+.alternative-contact {
+  margin: 0.5em 0 0.25em 0;
+}
+address .non-ascii {
+  margin: 0 0 0 2em;
+}
+
+/* With it being possible to set tables with alignment
+  left, center, and right, { width: 100%; } does not make sense */
+table {
+  width: auto;
+}
+
+/* Avoid reference text that sits in a block with very wide left margin,
+   because of a long floating dt label.*/
+.references dd {
+  overflow: visible;
+}
+
+/* Control caption placement */
+caption {
+  caption-side: bottom;
+}
+
+/* Limit the width of the author address vcard, so names in right-to-left
+   script don't end up on the other side of the page. */
+
+address.vcard {
+  max-width: 30em;
+  margin-right: auto;
+}
+
+/* For address alignment dependent on LTR or RTL scripts */
+address div.left {
+  text-align: left;
+}
+address div.right {
+  text-align: right;
+}
+
+/* Provide table alignment support.  We can't use the alignX classes above
+   since they do unwanted things with caption and other styling. */
+table.right {
+ margin-left: auto;
+ margin-right: 0;
+}
+table.center {
+ margin-left: auto;
+ margin-right: auto;
+}
+table.left {
+ margin-left: 0;
+ margin-right: auto;
+}
+
+/* Give the table caption label the same styling as the figcaption */
+caption a[href] {
+  color: #222;
+}
+
+@media print {
+  .toplink {
+    display: none;
+  }
+
+  /* avoid overwriting the top border line with the ToC header */
+  #toc {
+    padding-top: 1px;
+  }
+
+  /* Avoid page breaks inside dl and author address entries */
+  .vcard {
+    page-break-inside: avoid;
+  }
+
+}
+/* Tweak the bcp14 keyword presentation */
+.bcp14 {
+  font-variant: small-caps;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+/* Tweak the invisible space above H* in order not to overlay links in text above */
+ h2 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 31px;
+ }
+ h3 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 24px;
+ }
+ h4 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 24px;
+ }
+/* Float artwork pilcrow to the right */
+@media screen {
+  .artwork a.pilcrow {
+    display: block;
+    line-height: 0.7;
+    margin-top: 0.15em;
+  }
+}
+/* Make pilcrows on dd visible */
+@media screen {
+  dd:hover > a.pilcrow {
+    visibility: visible;
+  }
+}
+/* Make the placement of figcaption match that of a table's caption
+   by removing the figure's added bottom margin */
+.alignLeft.art-text,
+.alignCenter.art-text,
+.alignRight.art-text {
+   margin-bottom: 0;
+}
+.alignLeft,
+.alignCenter,
+.alignRight {
+  margin: 1em 0 0 0;
+}
+/* In print, the pilcrow won't show on hover, so prevent it from taking up space,
+   possibly even requiring a new line */
+@media print {
+  a.pilcrow {
+    display: none;
+  }
+}
+/* Styling for the external metadata */
+div#external-metadata {
+  background-color: #eee;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+  display: none;
+}
+div#internal-metadata {
+  padding: 0.5em;                       /* to match the external-metadata padding */
+}
+/* Styling for title RFC Number */
+h1#rfcnum {
+  clear: both;
+  margin: 0 0 -1em;
+  padding: 1em 0 0 0;
+}
+/* Make .olPercent look the same as <ol><li> */
+dl.olPercent > dd {
+  margin-bottom: 0.25em;
+  min-height: initial;
+}
+/* Give aside some styling to set it apart */
+aside {
+  border-left: 1px solid #ddd;
+  margin: 1em 0 1em 2em;
+  padding: 0.2em 2em;
+}
+aside > dl,
+aside > ol,
+aside > ul,
+aside > table,
+aside > p {
+  margin-bottom: 0.5em;
+}
+/* Additional page break settings */
+@media print {
+  figcaption, table caption {
+    page-break-before: avoid;
+  }
+}
+/* Font size adjustments for print */
+@media print {
+  body  { font-size: 10pt;      line-height: normal; max-width: 96%; }
+  h1    { font-size: 1.72em;    padding-top: 1.5em; } /* 1*1.2*1.2*1.2 */
+  h2    { font-size: 1.44em;    padding-top: 1.5em; } /* 1*1.2*1.2 */
+  h3    { font-size: 1.2em;     padding-top: 1.5em; } /* 1*1.2 */
+  h4    { font-size: 1em;       padding-top: 1.5em; }
+  h5, h6 { font-size: 1em;      margin: initial; padding: 0.5em 0 0.3em; }
+}
+/* Sourcecode margin in print, when there's no pilcrow */
+@media print {
+  .artwork,
+  .artwork > pre,
+  .sourcecode {
+    margin-bottom: 1em;
+  }
+}
+/* Avoid narrow tables forcing too narrow table captions, which may render badly */
+table {
+  min-width: 20em;
+}
+/* ol type a */
+ol.type-a { list-style-type: lower-alpha; }
+ol.type-A { list-style-type: upper-alpha; }
+ol.type-i { list-style-type: lower-roman; }
+ol.type-I { list-style-type: upper-roman; }
+/* Apply the print table and row borders in general, on request from the RPC,
+and increase the contrast between border and odd row background slightly */
+table {
+  border: 1px solid #ddd;
+}
+td {
+  border-top: 1px solid #ddd;
+}
+tr {
+  break-inside: avoid;
+}
+tr:nth-child(2n+1) > td {
+  background-color: #f8f8f8;
+}
+/* Use style rules to govern display of the TOC. */
+@media screen and (max-width: 1023px) {
+  #toc nav { display: none; }
+  #toc.active nav { display: block; }
+}
+/* Add support for keepWithNext */
+.keepWithNext {
+  break-after: avoid-page;
+  break-after: avoid-page;
+}
+/* Add support for keepWithPrevious */
+.keepWithPrevious {
+  break-before: avoid-page;
+}
+/* Change the approach to avoiding breaks inside artwork etc. */
+figure, pre, table, .artwork, .sourcecode  {
+  break-before: auto;
+  break-after: auto;
+}
+/* Avoid breaks between <dt> and <dd> */
+dl {
+  break-before: auto;
+  break-inside: auto;
+}
+dt {
+  break-before: auto;
+  break-after: avoid-page;
+}
+dd {
+  break-before: avoid-page;
+  break-after: auto;
+  orphans: 3;
+  widows: 3
+}
+span.break, dd.break {
+  margin-bottom: 0;
+  min-height: 0;
+  break-before: auto;
+  break-inside: auto;
+  break-after: auto;
+}
+/* Undo break-before ToC */
+@media print {
+  #toc {
+    break-before: auto;
+  }
+}
+/* Text in compact lists should not get extra bottom margin space,
+   since that would makes the list not compact */
+ul.compact p, .ulCompact p,
+ol.compact p, .olCompact p {
+ margin: 0;
+}
+/* But the list as a whole needs the extra space at the end */
+section ul.compact,
+section .ulCompact,
+section ol.compact,
+section .olCompact {
+  margin-bottom: 1em;                    /* same as p not within ul.compact etc. */
+}
+/* The tt and code background above interferes with for instance table cell
+   backgrounds.  Changed to something a bit more selective. */
+tt, code {
+  background-color: transparent;
+}
+p tt, p code, li tt, li code, dt tt, dt code {
+  background-color: #f8f8f8;
+}
+/* Tweak the pre margin -- 0px doesn't come out well */
+pre {
+   margin-top: 0.5px;
+}
+/* Tweak the compact list text */
+ul.compact, .ulCompact,
+ol.compact, .olCompact,
+dl.compact, .dlCompact {
+  line-height: normal;
+}
+/* Don't add top margin for nested lists */
+li > ul, li > ol, li > dl,
+dd > ul, dd > ol, dd > dl,
+dl > dd > dl {
+  margin-top: initial;
+}
+/* Elements that should not be rendered on the same line as a <dt> */
+/* This should match the element list in writer.text.TextWriter.render_dl() */
+dd > div.artwork:first-child,
+dd > aside:first-child,
+dd > blockquote:first-child,
+dd > figure:first-child,
+dd > ol:first-child,
+dd > div.sourcecode:first-child,
+dd > table:first-child,
+dd > ul:first-child {
+  clear: left;
+}
+/* fix for weird browser behaviour when <dd/> is empty */
+dt+dd:empty::before{
+  content: "\00a0";
+}
+/* Make paragraph spacing inside <li> smaller than in body text, to fit better within the list */
+li > p {
+  margin-bottom: 0.5em
+}
+/* Don't let p margin spill out from inside list items */
+li > p:last-of-type:only-child {
+  margin-bottom: 0;
+}
+</style>
+<link href="rfc-local.css" rel="stylesheet" type="text/css">
+<script type="application/javascript">async function addMetadata(){try{const e=document.styleSheets[0].cssRules;for(let t=0;t<e.length;t++)if(/#identifiers/.exec(e[t].selectorText)){const a=e[t].cssText.replace("#identifiers","#external-updates");document.styleSheets[0].insertRule(a,document.styleSheets[0].cssRules.length)}}catch(e){console.log(e)}const e=document.getElementById("external-metadata");if(e)try{var t,a="",o=function(e){const t=document.getElementsByTagName("meta");for(let a=0;a<t.length;a++)if(t[a].getAttribute("name")===e)return t[a].getAttribute("content");return""}("rfc.number");if(o){t="https://www.rfc-editor.org/rfc/rfc"+o+".json";try{const e=await fetch(t);a=await e.json()}catch(e){t=document.URL.indexOf("html")>=0?document.URL.replace(/html$/,"json"):document.URL+".json";const o=await fetch(t);a=await o.json()}}if(!a)return;e.style.display="block";const s="",d="https://datatracker.ietf.org/doc",n="https://datatracker.ietf.org/ipr/search",c="https://www.rfc-editor.org/info",l=a.doc_id.toLowerCase(),i=a.doc_id.slice(0,3).toLowerCase(),f=a.doc_id.slice(3).replace(/^0+/,""),u={status:"Status",obsoletes:"Obsoletes",obsoleted_by:"Obsoleted By",updates:"Updates",updated_by:"Updated By",see_also:"See Also",errata_url:"Errata"};let h="<dl style='overflow:hidden' id='external-updates'>";["status","obsoletes","obsoleted_by","updates","updated_by","see_also","errata_url"].forEach(e=>{if("status"==e){a[e]=a[e].toLowerCase();var t=a[e].split(" "),o=t.length,w="",p=1;for(let e=0;e<o;e++)p<o?w=w+r(t[e])+" ":w+=r(t[e]),p++;a[e]=w}else if("obsoletes"==e||"obsoleted_by"==e||"updates"==e||"updated_by"==e){var g,m="",b=1;g=a[e].length;for(let t=0;t<g;t++)a[e][t]&&(a[e][t]=String(a[e][t]).toLowerCase(),m=b<g?m+"<a href='"+s+"/rfc/".concat(a[e][t])+"'>"+a[e][t].slice(3)+"</a>, ":m+"<a href='"+s+"/rfc/".concat(a[e][t])+"'>"+a[e][t].slice(3)+"</a>",b++);a[e]=m}else if("see_also"==e){var y,L="",C=1;y=a[e].length;for(let t=0;t<y;t++)if(a[e][t]){a[e][t]=String(a[e][t]);var _=a[e][t].slice(0,3),v=a[e][t].slice(3).replace(/^0+/,"");L=C<y?"RFC"!=_?L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+_+" "+v+"</a>, ":L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+v+"</a>, ":"RFC"!=_?L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+_+" "+v+"</a>":L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+v+"</a>",C++}a[e]=L}else if("errata_url"==e){var R="";R=a[e]?R+"<a href='"+a[e]+"'>Errata exist</a> | <a href='"+d+"/"+l+"'>Datatracker</a>| <a href='"+n+"/?"+i+"="+f+"&submit="+i+"'>IPR</a> | <a href='"+c+"/"+l+"'>Info page</a>":"<a href='"+d+"/"+l+"'>Datatracker</a> | <a href='"+n+"/?"+i+"="+f+"&submit="+i+"'>IPR</a> | <a href='"+c+"/"+l+"'>Info page</a>",a[e]=R}""!=a[e]?"Errata"==u[e]?h+=`<dt>More info:</dt><dd>${a[e]}</dd>`:h+=`<dt>${u[e]}:</dt><dd>${a[e]}</dd>`:"Errata"==u[e]&&(h+=`<dt>More info:</dt><dd>${a[e]}</dd>`)}),h+="</dl>",e.innerHTML=h}catch(e){console.log(e)}else console.log("Could not locate metadata <div> element");function r(e){return e.charAt(0).toUpperCase()+e.slice(1)}}window.removeEventListener("load",addMetadata),window.addEventListener("load",addMetadata);</script>
+</head>
+<body class="xml2rfc">
+<table class="ears">
+<thead><tr>
+<td class="left">Internet-Draft</td>
+<td class="center">credkit Composite Proofs</td>
+<td class="right">July 2026</td>
+</tr></thead>
+<tfoot><tr>
+<td class="left">Markovski</td>
+<td class="center">Expires 17 January 2027</td>
+<td class="right">[Page]</td>
+</tr></tfoot>
+</table>
+<div id="external-metadata" class="document-information"></div>
+<div id="internal-metadata" class="document-information">
+<dl id="identifiers">
+<dt class="label-workgroup">Workgroup:</dt>
+<dd class="workgroup">Independent</dd>
+<dt class="label-internet-draft">Internet-Draft:</dt>
+<dd class="internet-draft">draft-markovski-credkit-composite-proofs-latest</dd>
+<dt class="label-published">Published:</dt>
+<dd class="published">
+<time datetime="2026-07-16" class="published">16 July 2026</time>
+    </dd>
+<dt class="label-intended-status">Intended Status:</dt>
+<dd class="intended-status">Informational</dd>
+<dt class="label-expires">Expires:</dt>
+<dd class="expires"><time datetime="2027-01-17">17 January 2027</time></dd>
+<dt class="label-authors">Author:</dt>
+<dd class="authors">
+<div class="author">
+      <div class="author-name">T. Markovski</div>
+<div class="org">credkit</div>
+</div>
+</dd>
+</dl>
+</div>
+<h1 id="title">credkit: Composite BBS Presentations with Predicates over Hidden Messages</h1>
+<section id="section-abstract">
+      <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
+<p id="section-abstract-1">This document describes credkit, an experimental construction that composes multiple
+IETF BBS proofs of knowledge under a single merged Fiat-Shamir challenge, and adds
+zero-knowledge predicates — set membership and range — over signed messages that are never
+disclosed. It is written in the style of, and layered directly on top of, the CFRG BBS
+Signatures and Blind BBS Signatures drafts, and it is motivated by the W3C Verifiable
+Credentials Data Model and the <code>bbs-2023</code> Data Integrity cryptosuite. Its purpose is to record,
+for readers already fluent in those specifications, exactly where credkit reuses them, where it
+diverges, and how the pieces that neither specification provides — cross-credential witness
+equality (a "link secret"), set-membership predicates, and range predicates bound to a signed
+value — are constructed and made sound.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+<p id="section-abstract-2">This is a description of an experiment, not a standards-track proposal. It defines no new
+registry, claims no interoperability, and has no formal standing. It exists so the design can be
+reviewed as a design rather than as source code.<a href="#section-abstract-2" class="pilcrow">¶</a></p>
+</section>
+<div id="status-of-memo">
+<section id="section-boilerplate.1">
+        <h2 id="name-status-of-this-memo">
+<a href="#name-status-of-this-memo" class="section-name selfRef">Status of This Memo</a>
+        </h2>
+<p id="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.<a href="#section-boilerplate.1-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <span><a href="https://datatracker.ietf.org/drafts/current/">https://datatracker.ietf.org/drafts/current/</a></span>.<a href="#section-boilerplate.1-2" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-4">
+        This Internet-Draft will expire on 17 January 2027.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="copyright">
+<section id="section-boilerplate.2">
+        <h2 id="name-copyright-notice">
+<a href="#name-copyright-notice" class="section-name selfRef">Copyright Notice</a>
+        </h2>
+<p id="section-boilerplate.2-1">
+            Copyright (c) 2026 IETF Trust and the persons identified as the
+            document authors. All rights reserved.<a href="#section-boilerplate.2-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<span><a href="https://trustee.ietf.org/license-info">https://trustee.ietf.org/license-info</a></span>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document.<a href="#section-boilerplate.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="toc">
+<section id="section-toc.1">
+        <a href="#" onclick="scroll(0,0)" class="toplink">▲</a><h2 id="name-table-of-contents">
+<a href="#name-table-of-contents" class="section-name selfRef">Table of Contents</a>
+        </h2>
+<nav class="toc"><ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1">
+            <p id="section-toc.1-1.1.1"><a href="#section-1" class="auto internal xref">1</a>.  <a href="#name-introduction" class="internal xref">Introduction</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.1">
+                <p id="section-toc.1-1.1.2.1.1" class="keepWithNext"><a href="#section-1.1" class="auto internal xref">1.1</a>.  <a href="#name-what-this-document-is-and-i" class="internal xref">What this document is, and is not</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.2">
+                <p id="section-toc.1-1.1.2.2.1" class="keepWithNext"><a href="#section-1.2" class="auto internal xref">1.2</a>.  <a href="#name-relationship-to-existing-sp" class="internal xref">Relationship to existing specifications</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.3">
+                <p id="section-toc.1-1.1.2.3.1" class="keepWithNext"><a href="#section-1.3" class="auto internal xref">1.3</a>.  <a href="#name-terminology" class="internal xref">Terminology</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.4">
+                <p id="section-toc.1-1.1.2.4.1"><a href="#section-1.4" class="auto internal xref">1.4</a>.  <a href="#name-notation-and-conventions" class="internal xref">Notation and conventions</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2">
+            <p id="section-toc.1-1.2.1"><a href="#section-2" class="auto internal xref">2</a>.  <a href="#name-architecture-overview" class="internal xref">Architecture overview</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2.2.1">
+                <p id="section-toc.1-1.2.2.1.1"><a href="#section-2.1" class="auto internal xref">2.1</a>.  <a href="#name-four-properties-one-constru" class="internal xref">Four properties, one construction</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2.2.2">
+                <p id="section-toc.1-1.2.2.2.1"><a href="#section-2.2" class="auto internal xref">2.2</a>.  <a href="#name-layering" class="internal xref">Layering</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3">
+            <p id="section-toc.1-1.3.1"><a href="#section-3" class="auto internal xref">3</a>.  <a href="#name-divergences-from-ietf-bbs" class="internal xref">Divergences from IETF BBS</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.1">
+                <p id="section-toc.1-1.3.2.1.1"><a href="#section-3.1" class="auto internal xref">3.1</a>.  <a href="#name-numeric-messages" class="internal xref">Numeric messages</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.2">
+                <p id="section-toc.1-1.3.2.2.1"><a href="#section-3.2" class="auto internal xref">3.2</a>.  <a href="#name-reachable-schnorr-blindings" class="internal xref">Reachable Schnorr blindings and split-phase proof generation</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3">
+                <p id="section-toc.1-1.3.2.3.1"><a href="#section-3.3" class="auto internal xref">3.3</a>.  <a href="#name-no-commit-mode" class="internal xref">No COMMIT mode</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.4">
+                <p id="section-toc.1-1.3.2.4.1"><a href="#section-3.4" class="auto internal xref">3.4</a>.  <a href="#name-deliberate-non-interoperabi" class="internal xref">Deliberate non-interoperability above the core</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4">
+            <p id="section-toc.1-1.4.1"><a href="#section-4" class="auto internal xref">4</a>.  <a href="#name-the-merged-fiat-shamir-tran" class="internal xref">The merged Fiat-Shamir transcript</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.1">
+                <p id="section-toc.1-1.4.2.1.1"><a href="#section-4.1" class="auto internal xref">4.1</a>.  <a href="#name-absorption" class="internal xref">Absorption</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.2">
+                <p id="section-toc.1-1.4.2.2.1"><a href="#section-4.2" class="auto internal xref">4.2</a>.  <a href="#name-layout" class="internal xref">Layout</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.3">
+                <p id="section-toc.1-1.4.2.3.1"><a href="#section-4.3" class="auto internal xref">4.3</a>.  <a href="#name-challenge-derivation" class="internal xref">Challenge derivation</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.4">
+                <p id="section-toc.1-1.4.2.4.1"><a href="#section-4.4" class="auto internal xref">4.4</a>.  <a href="#name-gt-serialization" class="internal xref">GT serialization</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.5">
+                <p id="section-toc.1-1.4.2.5.1"><a href="#section-4.5" class="auto internal xref">4.5</a>.  <a href="#name-one-challenge-per-transcrip" class="internal xref">One challenge per transcript</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5">
+            <p id="section-toc.1-1.5.1"><a href="#section-5" class="auto internal xref">5</a>.  <a href="#name-composite-presentations" class="internal xref">Composite presentations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.1">
+                <p id="section-toc.1-1.5.2.1.1"><a href="#section-5.1" class="auto internal xref">5.1</a>.  <a href="#name-message-space-and-index-con" class="internal xref">Message space and index conventions</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.2">
+                <p id="section-toc.1-1.5.2.2.1"><a href="#section-5.2" class="auto internal xref">5.2</a>.  <a href="#name-structure" class="internal xref">Structure</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.3">
+                <p id="section-toc.1-1.5.2.3.1"><a href="#section-5.3" class="auto internal xref">5.3</a>.  <a href="#name-witness-equality-the-link-s" class="internal xref">Witness equality (the link secret)</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5.2.4">
+                <p id="section-toc.1-1.5.2.4.1"><a href="#section-5.4" class="auto internal xref">5.4</a>.  <a href="#name-randomness-independence" class="internal xref">Randomness independence</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6">
+            <p id="section-toc.1-1.6.1"><a href="#section-6" class="auto internal xref">6</a>.  <a href="#name-predicates-over-hidden-mess" class="internal xref">Predicates over hidden messages</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.1">
+                <p id="section-toc.1-1.6.2.1.1"><a href="#section-6.1" class="auto internal xref">6.1</a>.  <a href="#name-parameters-a-signed-alphabe" class="internal xref">Parameters: a signed alphabet</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.2">
+                <p id="section-toc.1-1.6.2.2.1"><a href="#section-6.2" class="auto internal xref">6.2</a>.  <a href="#name-set-membership" class="internal xref">Set membership</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.3">
+                <p id="section-toc.1-1.6.2.3.1"><a href="#section-6.3" class="auto internal xref">6.3</a>.  <a href="#name-range-via-digit-decompositi" class="internal xref">Range via digit decomposition</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.3.2.1">
+                    <p id="section-toc.1-1.6.2.3.2.1.1"><a href="#section-6.3.1" class="auto internal xref">6.3.1</a>.  <a href="#name-one-sided-ranges-and-the-bo" class="internal xref">One-sided ranges and the bound</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.3.2.2">
+                    <p id="section-toc.1-1.6.2.3.2.2.1"><a href="#section-6.3.2" class="auto internal xref">6.3.2</a>.  <a href="#name-binding-a-predicate-to-a-si" class="internal xref">Binding a predicate to a signature</a></p>
+</li>
+                </ul>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7">
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="auto internal xref">7</a>.  <a href="#name-wire-formats" class="internal xref">Wire formats</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.1">
+                <p id="section-toc.1-1.7.2.1.1"><a href="#section-7.1" class="auto internal xref">7.1</a>.  <a href="#name-range-parameters" class="internal xref">Range parameters</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.2">
+                <p id="section-toc.1-1.7.2.2.1"><a href="#section-7.2" class="auto internal xref">7.2</a>.  <a href="#name-set-membership-parameters" class="internal xref">Set-membership parameters</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.3">
+                <p id="section-toc.1-1.7.2.3.1"><a href="#section-7.3" class="auto internal xref">7.3</a>.  <a href="#name-range-proof" class="internal xref">Range proof</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.4">
+                <p id="section-toc.1-1.7.2.4.1"><a href="#section-7.4" class="auto internal xref">7.4</a>.  <a href="#name-set-membership-proof" class="internal xref">Set-membership proof</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.5">
+                <p id="section-toc.1-1.7.2.5.1"><a href="#section-7.5" class="auto internal xref">7.5</a>.  <a href="#name-presentation" class="internal xref">Presentation</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8">
+            <p id="section-toc.1-1.8.1"><a href="#section-8" class="auto internal xref">8</a>.  <a href="#name-security-considerations" class="internal xref">Security considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.1">
+                <p id="section-toc.1-1.8.2.1.1"><a href="#section-8.1" class="auto internal xref">8.1</a>.  <a href="#name-soundness-rests-on-one-chal" class="internal xref">Soundness rests on one challenge</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2">
+                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-ul-264-is-a-soundness-bound" class="internal xref"><code>u^L &lt;= 2^64</code> is a soundness bound, not a limit</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3">
+                <p id="section-toc.1-1.8.2.3.1"><a href="#section-8.3" class="auto internal xref">8.3</a>.  <a href="#name-identity-v-must-be-rejected" class="internal xref">Identity <code>V</code> must be rejected</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.4">
+                <p id="section-toc.1-1.8.2.4.1"><a href="#section-8.4" class="auto internal xref">8.4</a>.  <a href="#name-shared-alphabet-randomness-" class="internal xref">Shared alphabet randomness is brute-forceable</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.5">
+                <p id="section-toc.1-1.8.2.5.1"><a href="#section-8.5" class="auto internal xref">8.5</a>.  <a href="#name-modular-predicate-semantics" class="internal xref">Modular predicate semantics</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.6">
+                <p id="section-toc.1-1.8.2.6.1"><a href="#section-8.6" class="auto internal xref">8.6</a>.  <a href="#name-trusted-setup-and-u-sdh" class="internal xref">Trusted setup and <code>u</code>-SDH</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.7">
+                <p id="section-toc.1-1.8.2.7.1"><a href="#section-8.7" class="auto internal xref">8.7</a>.  <a href="#name-per-prover-alphabets-are-a-" class="internal xref">Per-prover alphabets are a linkability trap</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.8">
+                <p id="section-toc.1-1.8.2.8.1"><a href="#section-8.8" class="auto internal xref">8.8</a>.  <a href="#name-transcript-order-binding" class="internal xref">Transcript order binding</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.9">
+                <p id="section-toc.1-1.8.2.9.1"><a href="#section-8.9" class="auto internal xref">8.9</a>.  <a href="#name-fail-closed-verification" class="internal xref">Fail-closed verification</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9">
+            <p id="section-toc.1-1.9.1"><a href="#section-9" class="auto internal xref">9</a>.  <a href="#name-privacy-considerations" class="internal xref">Privacy considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.1">
+                <p id="section-toc.1-1.9.2.1.1"><a href="#section-9.1" class="auto internal xref">9.1</a>.  <a href="#name-verifier-unlinkability-is-p" class="internal xref">Verifier unlinkability is preserved by omission</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.2">
+                <p id="section-toc.1-1.9.2.2.1"><a href="#section-9.2" class="auto internal xref">9.2</a>.  <a href="#name-what-a-predicate-reveals" class="internal xref">What a predicate reveals</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10">
+            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-the-cryptosuite-layer" class="internal xref">The cryptosuite layer</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
+            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-iana-considerations" class="internal xref">IANA considerations</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
+            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-references" class="internal xref">References</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.1">
+                <p id="section-toc.1-1.12.2.1.1"><a href="#section-12.1" class="auto internal xref">12.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.2">
+                <p id="section-toc.1-1.12.2.2.1"><a href="#section-12.2" class="auto internal xref">12.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13">
+            <p id="section-toc.1-1.13.1"><a href="#appendix-A" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
+</li>
+        </ul>
+</nav>
+</section>
+</div>
+<div id="introduction">
+<section id="section-1">
+      <h2 id="name-introduction">
+<a href="#section-1" class="section-number selfRef">1. </a><a href="#name-introduction" class="section-name selfRef">Introduction</a>
+      </h2>
+<p id="section-1-1">The BBS signature scheme <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span> gives a holder selective disclosure
+with verifier unlinkability: each presentation is a freshly randomized proof of knowledge, so
+two verifiers who collude on the transcripts they received cannot tell they saw the same
+credential. The Blind BBS extension <span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span> lets an issuer sign
+messages it never learns, which is the mechanism a holder-chosen secret needs in order to be
+carried across credentials from different issuers.<a href="#section-1-1" class="pilcrow">¶</a></p>
+<p id="section-1-2">Neither specification, on its own, lets a holder prove anything about a message it does <em>not</em>
+disclose. Selective disclosure is all-or-nothing per message: a birth date is either revealed
+verbatim or withheld entirely. The <code>bbs-2023</code> Data Integrity cryptosuite <span>[<a href="#DI-BBS" class="cite xref">DI-BBS</a>]</span> inherits this
+limitation: it discloses or hides whole statements and defines no predicate mechanism, so a
+deployment that needs one (for example, "older than 18") must add an external construction. The
+wallet that motivated this work did so by signing a Poseidon commitment to the birth date into
+the credential, disclosing that commitment on every presentation, and proving in a separate
+circuit that it opens to a date past a cutoff — and that fixed, disclosed field element,
+identical across presentations, is a perfect cross-verifier correlation handle, reintroducing
+exactly what BBS is chosen to remove. The flaw is the <em>fixed</em> commitment, not the bridge itself:
+a fresh per-presentation commitment (as in Blind BBS COMMIT mode, or AnonCreds' Pedersen bridge)
+does not correlate. This is one deployment's approach — the concrete failure credkit started
+from — not a claim about how the field at large builds predicates.<a href="#section-1-2" class="pilcrow">¶</a></p>
+<p id="section-1-3">credkit is an attempt to close that gap without a disclosed commitment and without a SNARK. It
+keeps the IETF BBS wire format and ciphersuites unchanged at the bottom, and builds two layers
+on top:<a href="#section-1-3" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-1-4.1">
+          <p id="section-1-4.1.1">A <strong>composite presentation layer</strong> that proves N BBS proofs under one merged Fiat-Shamir
+challenge, so that Schnorr blindings can be shared across proofs. Sharing a blinding for the
+same hidden message across two credentials, under one challenge, proves the messages are
+equal without revealing them — the "link secret" mechanic.<a href="#section-1-4.1.1" class="pilcrow">¶</a></p>
+</li>
+        <li class="normal" id="section-1-4.2">
+          <p id="section-1-4.2.1">A <strong>predicate layer</strong> using the set-membership and range construction of Camenisch,
+Chaabouni, and shelat <span>[<a href="#CCS08" class="cite xref">CCS08</a>]</span>. A predicate proof is bound to a hidden BBS message not through
+a disclosed commitment but through a linear relation between response scalars that holds only
+under the shared challenge. The value stays hidden; only the predicate's truth is revealed.<a href="#section-1-4.2.1" class="pilcrow">¶</a></p>
+</li>
+      </ul>
+<p id="section-1-5">A JSON-LD cryptosuite that packages these presentations into W3C Verifiable Credentials
+<span>[<a href="#VC-DATA-MODEL" class="cite xref">VC-DATA-MODEL</a>]</span> in the manner of <code>bbs-2023</code> is implemented for the single-credential case and
+summarized in <a href="#the-cryptosuite-layer" class="auto internal xref">Section 10</a>; the multi-credential presentation envelope is designed
+but not yet built, and the suite's full specification is out of scope here.<a href="#section-1-5" class="pilcrow">¶</a></p>
+<div id="what-this-document-is-and-is-not">
+<section id="section-1.1">
+        <h3 id="name-what-this-document-is-and-i">
+<a href="#section-1.1" class="section-number selfRef">1.1. </a><a href="#name-what-this-document-is-and-i" class="section-name selfRef">What this document is, and is not</a>
+        </h3>
+<p id="section-1.1-1">This document is descriptive. It records the choices a single reference implementation makes and
+why, at the level of detail a second reader would need to follow the security argument. It is
+<strong>not</strong>:<a href="#section-1.1-1" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-1.1-2.1">a standards-track document, or a candidate to become one;<a href="#section-1.1-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-1.1-2.2">an interoperability target — the constructions above the BBS core have no second
+implementation and no published test vectors beyond the golden vectors pinned in the
+reference implementation's own test suite;<a href="#section-1.1-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-1.1-2.3">a claim of novelty for the underlying cryptography, all of which is drawn from the cited
+literature.<a href="#section-1.1-2.3" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-1.1-3">Where this document says an implementation "MUST" or "rejects" something, it is stating what the
+reference implementation enforces and why that enforcement is load-bearing for soundness or
+privacy, not imposing a conformance requirement on anyone.<a href="#section-1.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="relationship-to-existing-specifications">
+<section id="section-1.2">
+        <h3 id="name-relationship-to-existing-sp">
+<a href="#section-1.2" class="section-number selfRef">1.2. </a><a href="#name-relationship-to-existing-sp" class="section-name selfRef">Relationship to existing specifications</a>
+        </h3>
+<p id="section-1.2-1">credkit is deliberately stratified so that each layer's relationship to prior work is clean:<a href="#section-1.2-1" class="pilcrow">¶</a></p>
+<table class="center" id="table-1">
+          <caption><a href="#table-1" class="selfRef">Table 1</a></caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Layer</th>
+              <th class="text-left" rowspan="1" colspan="1">Relationship to prior work</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">BBS core: <code>KeyGen</code>, <code>Sign</code>, <code>Verify</code>, <code>ProofGen</code>, <code>ProofVerify</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">Implements <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span> unchanged; passes its vendored test vectors byte-for-byte.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Blind issuance: <code>Commit</code>, <code>BlindSign</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">Implements the stable, fixture-covered part of <span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span>; omits COMMIT-mode disclosure (see <a href="#no-commit-mode" class="auto internal xref">Section 3.3</a>).</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Numeric messages</td>
+              <td class="text-left" rowspan="1" colspan="1">A narrow extension to the BBS message-to-scalar map (see <a href="#numeric-messages" class="auto internal xref">Section 3.1</a>).</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Composite presentations, predicates</td>
+              <td class="text-left" rowspan="1" colspan="1">New; described here. Neither IETF draft has an equivalent.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">JSON-LD cryptosuite</td>
+              <td class="text-left" rowspan="1" colspan="1">Built for single credentials; motivated by <code>bbs-2023</code> <span>[<a href="#DI-BBS" class="cite xref">DI-BBS</a>]</span>. Summarized in <a href="#the-cryptosuite-layer" class="auto internal xref">Section 10</a>, not fully specified here.</td>
+            </tr>
+          </tbody>
+        </table>
+<p id="section-1.2-3">The only modifications to the BBS layer are (a) numeric messages and (b) exposing the proof
+generation algorithm's per-message Schnorr blindings so an outer protocol can reuse them. Both
+are described precisely in <a href="#divergences-from-ietf-bbs" class="auto internal xref">Section 3</a>. Everything else in that layer is the
+IETF construction as written.<a href="#section-1.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="terminology">
+<section id="section-1.3">
+        <h3 id="name-terminology">
+<a href="#section-1.3" class="section-number selfRef">1.3. </a><a href="#name-terminology" class="section-name selfRef">Terminology</a>
+        </h3>
+<p id="section-1.3-1">Holder, Issuer, Verifier, Prover, and the BBS operation names (<code>Sign</code>, <code>Commit</code>, <code>BlindSign</code>,
+<code>ProofGen</code>, <code>ProofVerify</code>) are used as in <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span> and
+<span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span>.<a href="#section-1.3-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlCompact dlParallel" id="section-1.3-2">
+          <dt id="section-1.3-2.1">Statement:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.2">One BBS proof of knowledge over one signature within a composite presentation. The Prover
+holds the full witness (signature, all messages); the Verifier sees only public values (public
+key, header, disclosed messages).<a href="#section-1.3-2.2" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.3-2.3">Presentation:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.4">A set of N statements proven together under one merged Fiat-Shamir challenge, together with
+any equality constraints and predicates over their hidden messages.<a href="#section-1.3-2.4" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.3-2.5">Predicate:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.6">A set-membership or range claim about a single hidden numeric message: that it lies in a signed
+set, or in an interval, without revealing which member or which value.<a href="#section-1.3-2.6" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.3-2.7">Alphabet / signed set:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.8">The set of scalars a Verifier has Boneh-Boyen-signed <span>[<a href="#BB04" class="cite xref">BB04</a>]</span> to serve as the public parameters
+of a predicate. For a range predicate it is the digit alphabet <code>{0, ..., u-1}</code>; for set
+membership it is an arbitrary set of distinct scalars.<a href="#section-1.3-2.8" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.3-2.9">Link secret:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.10">A holder-chosen scalar committed at issuance and signed blindly into multiple credentials, so
+that a later presentation can prove two credentials share it — proving common holdership
+without an identifier.<a href="#section-1.3-2.10" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="notation-and-conventions">
+<section id="section-1.4">
+        <h3 id="name-notation-and-conventions">
+<a href="#section-1.4" class="section-number selfRef">1.4. </a><a href="#name-notation-and-conventions" class="section-name selfRef">Notation and conventions</a>
+        </h3>
+<p id="section-1.4-1">The key words "MUST", "MUST NOT", "SHOULD", and "MAY" in this document are to be interpreted as
+described in BCP 14 <span>[<a href="#RFC2119" class="cite xref">RFC2119</a>]</span> <span>[<a href="#RFC8174" class="cite xref">RFC8174</a>]</span> when, and only when, they appear in all capitals, with
+the scope limited to what the reference implementation enforces as described in
+<a href="#what-this-document-is-and-is-not" class="auto internal xref">Section 1.1</a>.<a href="#section-1.4-1" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-1.4-2.1">
+            <code>G1</code>, <code>G2</code>, <code>GT</code> are the BLS12-381 groups; <code>e: G1 x G2 -&gt; GT</code> is the pairing; <code>r</code> is the prime
+subgroup order. <code>G1.BASE</code>, <code>G2.BASE</code> are the standard generators from
+<span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.4-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-1.4-2.2">Scalars are elements of the field of order <code>r</code>, written lowercase (<code>x</code>, <code>v</code>, <code>c</code>). Group
+elements are uppercase (<code>A</code>, <code>V</code>, <code>Abar</code>). <code>a * P</code> is scalar multiplication; <code>P + Q</code> is the
+group operation; <code>-P</code> is negation. Arithmetic on scalars is mod <code>r</code> throughout.<a href="#section-1.4-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-1.4-2.3">
+            <code>a || b</code> is octet-string concatenation. <code>I2OSP(n, len)</code> and <code>OS2IP(octets)</code> are as in
+<span>[<a href="#RFC8017" class="cite xref">RFC8017</a>]</span>. <code>len(x)</code> is the octet length of <code>x</code>.<a href="#section-1.4-2.3" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-1.4-2.4">
+            <code>hash_to_scalar(msg, dst)</code> is the BBS operation from <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.4-2.4" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-1.4-2.5">
+            <code>utf8(s)</code> is the UTF-8 encoding of ASCII string <code>s</code>.<a href="#section-1.4-2.5" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-1.4-2.6">A Prover's Schnorr blinding for a hidden message is written <code>m~</code> (drawn per presentation); the
+corresponding response scalar the Verifier reconstructs is <code>m^ = m~ + c * m</code>, where <code>c</code> is the
+challenge and <code>m</code> the message scalar. This is the response convention of
+<span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.4-2.6" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-1.4-3">Two ciphersuites are used, unchanged from the BBS drafts: <code>BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_</code>
+(SHA-256, via <code>expand_message_xmd</code> <span>[<a href="#RFC9380" class="cite xref">RFC9380</a>]</span>) and <code>BBS_BLS12381G1_XOF:SHAKE-256_SSWU_RO_</code>
+(SHAKE-256, via <code>expand_message_xof</code>). Group elements serialize with the point encoding of the
+BBS drafts: <code>G1</code> compressed to 48 octets, <code>G2</code> compressed to 96 octets, scalars to 32 octets.<a href="#section-1.4-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="architecture-overview">
+<section id="section-2">
+      <h2 id="name-architecture-overview">
+<a href="#section-2" class="section-number selfRef">2. </a><a href="#name-architecture-overview" class="section-name selfRef">Architecture overview</a>
+      </h2>
+<div id="four-properties-one-construction">
+<section id="section-2.1">
+        <h3 id="name-four-properties-one-constru">
+<a href="#section-2.1" class="section-number selfRef">2.1. </a><a href="#name-four-properties-one-constru" class="section-name selfRef">Four properties, one construction</a>
+        </h3>
+<p id="section-2.1-1">credkit exists because four privacy properties that are usually treated as separate features are,
+with BBS plus blind issuance, a single construction:<a href="#section-2.1-1" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-2.1-2.1">
+            <strong>Verifier unlinkability</strong> is already provided by BBS: each <code>ProofVerify</code>-able proof is
+randomized. credkit preserves it by never adding a stable, disclosed value to a presentation.<a href="#section-2.1-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-2.1-2.2">
+            <strong>Blind issuance</strong> lets the Issuer sign a holder-committed message it never sees
+<span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span>.<a href="#section-2.1-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-2.1-2.3">
+            <strong>Credential linkability</strong> is a witness-equality claim: two statements sharing one hidden
+message's Schnorr blinding under one challenge produce equal response scalars iff the messages
+are equal. If the shared message is a blindly signed link secret, this proves common
+holdership and nothing else.<a href="#section-2.1-2.3" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-2.1-2.4">
+            <strong>Predicates</strong> are the same shared-blinding idea pointed at a Boneh-Boyen-signed alphabet
+rather than a second credential.<a href="#section-2.1-2.4" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-2.1-3">The load-bearing observation is that all three of the non-trivial properties reduce to <em>sharing
+a Schnorr blinding under one Fiat-Shamir challenge</em>. The merged transcript of
+<a href="#the-merged-fiat-shamir-transcript" class="auto internal xref">Section 4</a> is the single mechanism that makes each of them sound, and
+using more than one challenge breaks all of them in the same way (see <a href="#one-challenge" class="auto internal xref">Section 4.5</a>).<a href="#section-2.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="layering">
+<section id="section-2.2">
+        <h3 id="name-layering">
+<a href="#section-2.2" class="section-number selfRef">2.2. </a><a href="#name-layering" class="section-name selfRef">Layering</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-2.2-1">
+<pre>  +-------------------------------------------------------------+
+  |  JSON-LD cryptosuite  (single-credential; motiv. bbs-2023)  |
+  +-------------------------------------------------------------+
+  |  Composite presentations                                    |
+  |    - merged Fiat-Shamir transcript                          |
+  |    - witness equality (link secret)                         |
+  |    - predicate binding                                      |
+  +----------------------------+--------------------------------+
+  |  BBS core + blind issuance |  CCS predicates (BB alphabet)  |
+  |  (IETF, unchanged, minus   |    - set membership            |
+  |   COMMIT mode; numeric     |    - range via digits          |
+  |   messages added)          |                                |
+  +----------------------------+--------------------------------+
+  |  BLS12-381 pairing (@noble/curves); no WASM, no SNARK       |
+  +-------------------------------------------------------------+
+</pre><a href="#section-2.2-1" class="pilcrow">¶</a>
+</div>
+<p id="section-2.2-2">The predicate layer and the BBS layer share exactly one thing: response scalars in the field of
+order <code>r</code>. They never share group elements, so no independence assumption ties the two generator
+families. This is why the predicate proofs can compose with BBS proofs by an algebraic relation
+between responses rather than through a shared commitment.<a href="#section-2.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="divergences-from-ietf-bbs">
+<section id="section-3">
+      <h2 id="name-divergences-from-ietf-bbs">
+<a href="#section-3" class="section-number selfRef">3. </a><a href="#name-divergences-from-ietf-bbs" class="section-name selfRef">Divergences from IETF BBS</a>
+      </h2>
+<p id="section-3-1">The BBS core is used unchanged except for the following three points. All three are necessary
+for the layers above; none of them alters the BBS wire format or the results of the vendored
+test vectors.<a href="#section-3-1" class="pilcrow">¶</a></p>
+<div id="numeric-messages">
+<section id="section-3.1">
+        <h3 id="name-numeric-messages">
+<a href="#section-3.1" class="section-number selfRef">3.1. </a><a href="#name-numeric-messages" class="section-name selfRef">Numeric messages</a>
+        </h3>
+<p id="section-3.1-1"><span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span> maps every message to a scalar by hashing:
+<code>msg_scalar = hash_to_scalar(msg, api_id || "MAP_MSG_TO_SCALAR_AS_HASH_")</code>. A predicate must do
+arithmetic on the signed value (compare it to a bound, decompose it into digits), which a hash
+destroys. credkit therefore admits a second message type: a message MAY be supplied as an
+integer in <code>[0, r)</code>, in which case it <strong>is</strong> its own scalar, bypassing the hash.<a href="#section-3.1-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-3.1-2">
+<pre>messageToScalar(suite, message):
+  if message is an integer:
+     if message &lt; 0 or message &gt;= r: reject
+     return message
+  else:
+     return hash_to_scalar(message, api_id || "MAP_MSG_TO_SCALAR_AS_HASH_")
+</pre><a href="#section-3.1-2" class="pilcrow">¶</a>
+</div>
+<p id="section-3.1-3">This is the same technique AnonCreds uses for its attribute encoding, and it is the only change
+to the signing path. Bytes messages are unaffected and continue to reproduce the BBS vectors.
+The consequences for predicate semantics — that predicates are modular, and that honest values
+must be encoded well below <code>r</code> for the natural comparison to hold — are discussed in
+<a href="#modular-predicate-semantics" class="auto internal xref">Section 8.5</a>. A predicate MUST reference a message that was signed as an
+integer; a predicate pointed at a hash-mapped (bytes) message is rejected by the Prover, and
+could not accidentally verify in any case (the hash would have to land in a <code>~2^-239</code> window).<a href="#section-3.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="reachable-schnorr-blindings-and-split-phase-proof-generation">
+<section id="section-3.2">
+        <h3 id="name-reachable-schnorr-blindings">
+<a href="#section-3.2" class="section-number selfRef">3.2. </a><a href="#name-reachable-schnorr-blindings" class="section-name selfRef">Reachable Schnorr blindings and split-phase proof generation</a>
+        </h3>
+<p id="section-3.2-1">The composite layer needs to (a) inject a chosen Schnorr blinding into a specific message slot
+before the challenge is computed, and (b) read back the response scalar for that slot after. The
+BBS <code>ProofGen</code> of <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span> computes its own challenge internally and
+exposes neither. credkit therefore factors <code>ProofGen</code> into three phases —<a href="#section-3.2-1" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-3.2-2.1">
+            <code>ProofInit</code>: draw randomness, compute the first-move commitments (<code>Abar</code>, <code>Bbar</code>, <code>D</code>, <code>T1</code>,
+<code>T2</code>, <code>domain</code>), retaining the per-message blindings <code>m~</code>;<a href="#section-3.2-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-3.2-2.2">an externally supplied challenge <code>c</code>;<a href="#section-3.2-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-3.2-2.3">
+            <code>ProofFinalize</code>: fold <code>c</code> into responses —<a href="#section-3.2-2.3" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-3.2-3">and correspondingly <code>ProofVerifyInit</code> / <code>ProofVerifyFinalize</code>. The single-phase
+<code>ProofGen</code>/<code>ProofVerify</code> are recovered as the compositions that compute the challenge with the
+IETF <code>ProofChallengeCalculate</code>, and those compositions still pass the vendored vectors
+byte-for-byte. Only the <em>challenge source</em> changes when a proof is used inside a presentation.<a href="#section-3.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="no-commit-mode">
+<section id="section-3.3">
+        <h3 id="name-no-commit-mode">
+<a href="#section-3.3" class="section-number selfRef">3.3. </a><a href="#name-no-commit-mode" class="section-name selfRef">No COMMIT mode</a>
+        </h3>
+<p id="section-3.3-1"><span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span> <code>-03</code> added a third per-message disclosure mode, COMMIT,
+that discloses a fresh per-presentation commitment <code>C_i = Y_0 * s_i + Y_1 * messages[i]</code> intended
+as the hook for external predicates. credkit does not implement it, for two reasons. First, it is
+the least settled part of the draft — no test vectors cover it and its serialization was rewritten
+during <code>-03</code>. Second, and more importantly, the composite layer makes it redundant: a
+per-presentation commitment to a signed-but-hidden value, provably opening to the signed message,
+is exactly what witness equality between a BBS statement and a commitment statement gives, built
+from parts the link secret already requires. COMMIT mode is the specification's convenience for
+consumers that lack a composite framework; credkit is a composite framework.<a href="#section-3.3-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="deliberate-non-interoperability-above-the-core">
+<section id="section-3.4">
+        <h3 id="name-deliberate-non-interoperabi">
+<a href="#section-3.4" class="section-number selfRef">3.4. </a><a href="#name-deliberate-non-interoperabi" class="section-name selfRef">Deliberate non-interoperability above the core</a>
+        </h3>
+<p id="section-3.4-1">A composite presentation is <strong>not</strong> a BBS proof, even when it contains a single statement. Its
+challenge is derived from credkit's transcript <a href="#the-merged-fiat-shamir-transcript" class="auto internal xref">Section 4</a>, not from the
+IETF <code>ProofChallengeCalculate</code>, so it will not pass <code>ProofVerify</code>. This is intentional: a
+special-cased "N = 1 is a plain BBS proof" path would be a second challenge-derivation code path,
+which is precisely the kind of Fiat-Shamir fork that produces soundness bugs. There is one
+challenge-derivation path. A consumer that needs a wire-compatible BBS proof uses BBS <code>ProofGen</code>
+directly.<a href="#section-3.4-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="the-merged-fiat-shamir-transcript">
+<section id="section-4">
+      <h2 id="name-the-merged-fiat-shamir-tran">
+<a href="#section-4" class="section-number selfRef">4. </a><a href="#name-the-merged-fiat-shamir-tran" class="section-name selfRef">The merged Fiat-Shamir transcript</a>
+      </h2>
+<p id="section-4-1">Every soundness property in credkit rests on all statements and predicates in a presentation
+sharing one challenge, derived by hashing one transcript. The transcript construction is the
+place where an ad-hoc <code>H(a || b || c)</code> concatenation would let a malicious Prover shift octets
+between fields and forge a proof over a different statement that hashes identically — the
+"Frozen Heart" bug class <span>[<a href="#FrozenHeart" class="cite xref">FrozenHeart</a>]</span>. The rules below exist to make that impossible.<a href="#section-4-1" class="pilcrow">¶</a></p>
+<div id="absorption">
+<section id="section-4.1">
+        <h3 id="name-absorption">
+<a href="#section-4.1" class="section-number selfRef">4.1. </a><a href="#name-absorption" class="section-name selfRef">Absorption</a>
+        </h3>
+<p id="section-4.1-1">The transcript accumulates labeled, length-framed entries. Absorbing a labeled value appends:<a href="#section-4.1-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-4.1-2">
+<pre>I2OSP(len(label), 8) || label || I2OSP(len(value), 8) || value
+</pre><a href="#section-4.1-2" class="pilcrow">¶</a>
+</div>
+<p id="section-4.1-3">Because both the label and the value are length-prefixed, no two distinct sequences of absorbed
+entries can produce the same octet stream. Labels MUST be non-empty. The typed helpers absorb:<a href="#section-4.1-3" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-4.1-4.1">a number as <code>I2OSP(n, 8)</code>;<a href="#section-4.1-4.1" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-4.1-4.2">a scalar as <code>I2OSP(s, 32)</code>;<a href="#section-4.1-4.2" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-4.1-4.3">a <code>G1</code> point as its 48-octet compressed encoding;<a href="#section-4.1-4.3" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-4.1-4.4">a <code>GT</code> element as its canonical serialization (see <a href="#gt-serialization" class="auto internal xref">Section 4.4</a>);<a href="#section-4.1-4.4" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-4.1-4.5">raw octets verbatim.<a href="#section-4.1-4.5" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-4.1-5">At construction the transcript first absorbs <code>("protocol", PROTOCOL_ID)</code> and
+<code>("ciphersuite", ciphersuite_id)</code>, binding every challenge to the protocol version and the
+ciphersuite. <code>PROTOCOL_ID</code> for this revision is the ASCII string <code>CREDKIT-PROOFS-V3</code>.<a href="#section-4.1-5" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="layout">
+<section id="section-4.2">
+        <h3 id="name-layout">
+<a href="#section-4.2" class="section-number selfRef">4.2. </a><a href="#name-layout" class="section-name selfRef">Layout</a>
+        </h3>
+<p id="section-4.2-1">A presentation over N statements, with E equality constraints, K range predicates, and M
+set-membership predicates, absorbs the following sequence. Prover and Verifier MUST absorb it
+identically; the entire layout is one function used by both sides.<a href="#section-4.2-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-4.2-2">
+<pre>("protocol", "CREDKIT-PROOFS-V3")
+("ciphersuite", ciphersuite_id)
+("presentation_header", presentation_header)
+("statement_count", N)
+for s in 0..N-1:
+    ("statement", s)
+    ("public_key", pk_s)                # G2, 96 octets
+    ("header", header_s)
+    ("issuer_known_count", L_s)         # messages the issuer knew
+    ("total_message_count", L_s + M_s)  # incl. committed messages
+    ("disclosed_count", D_s)
+    for each disclosed slot j (ascending proof-space index):
+        ("disclosed_index", j)
+        ("disclosed_scalar", msg_scalar_j)
+    ("Abar", Abar_s)  ("Bbar", Bbar_s)  ("D", D_s)
+    ("T1", T1_s)      ("T2", T2_s)      ("domain", domain_s)
+("equality_constraint_count", E)
+for each equality class:
+    ("equality_ref_count", |refs|)
+    for each ref (statement, messageIndex):
+        ("ref_statement", ref.statement)
+        ("ref_message_index", ref.messageIndex)
+("range_predicate_count", K)
+for k in 0..K-1:
+    ("predicate", k)
+    ("predicate_statement", p_k.statement)
+    ("predicate_message_index", p_k.messageIndex)
+    ("predicate_kind", utf8(p_k.kind))        # "greaterOrEqual" | "lessOrEqual"
+    ("predicate_bound", p_k.bound)            # scalar
+    ("predicate_digits", p_k.digits)
+    ("predicate_params", rangeParamsToOctets(p_k.params))
+    for i in 0..digits-1:
+        ("V", V_i)   # G1, blinded alphabet signature for digit i
+        ("R", R_i)   # GT, sigma commitment for digit i
+("set_membership_count", M)
+for k in 0..M-1:
+    ("membership", k)
+    ("membership_statement", m_k.statement)
+    ("membership_message_index", m_k.messageIndex)
+    ("membership_params", setParamsToOctets(m_k.params))
+    ("V", V_k)   # G1, blinded signature on the hidden member
+    ("R", R_k)   # GT, sigma commitment
+</pre><a href="#section-4.2-2" class="pilcrow">¶</a>
+</div>
+<p id="section-4.2-3">Every field a Verifier must agree on is absorbed, including the full serialized predicate
+parameters and the predicate ordering. Ordering is therefore significant: the Prover and
+Verifier MUST supply the same statements, constraints, and predicates in the same order. This is
+deliberate — canonicalizing the order inside the library would silently paper over a
+Prover/Verifier disagreement instead of failing it.<a href="#section-4.2-3" class="pilcrow">¶</a></p>
+<p id="section-4.2-4">Even an empty predicate section absorbs its count (<code>("range_predicate_count", 0)</code> and
+<code>("set_membership_count", 0)</code>), so that adding predicates to a presentation cannot collide with a
+predicate-free presentation over the same statements.<a href="#section-4.2-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="challenge-derivation">
+<section id="section-4.3">
+        <h3 id="name-challenge-derivation">
+<a href="#section-4.3" class="section-number selfRef">4.3. </a><a href="#name-challenge-derivation" class="section-name selfRef">Challenge derivation</a>
+        </h3>
+<p id="section-4.3-1">After the full layout is absorbed, one final empty-valued label is absorbed and the challenge is
+derived:<a href="#section-4.3-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-4.3-2">
+<pre>("presentation_challenge", "")
+challenge = hash_to_scalar(
+    concat(all absorbed pieces),
+    utf8(PROTOCOL_ID || "-" || ciphersuite_id || "H2S_"))
+</pre><a href="#section-4.3-2" class="pilcrow">¶</a>
+</div>
+<p id="section-4.3-3">The domain separation tag is specific to both the protocol version and the ciphersuite.<a href="#section-4.3-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="gt-serialization">
+<section id="section-4.4">
+        <h3 id="name-gt-serialization">
+<a href="#section-4.4" class="section-number selfRef">4.4. </a><a href="#name-gt-serialization" class="section-name selfRef">GT serialization</a>
+        </h3>
+<p id="section-4.4-1">Predicate sigma commitments live in <code>GT</code>. They are absorbed using the implementation's canonical
+<code>Fp12</code> serialization (576 octets). This ties the transcript to a specific field encoding: a
+change to that encoding, or to the underlying pairing library's layout, changes every challenge
+and is caught by the golden vectors before anything downstream. Absorbing <code>GT</code> elements, rather
+than re-deriving them, keeps the Verifier's reconstruction <a href="#binding-a-predicate-to-a-signature" class="auto internal xref">Section 6.3.2</a>
+inside the challenge.<a href="#section-4.4-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="one-challenge">
+<section id="section-4.5">
+        <h3 id="name-one-challenge-per-transcrip">
+<a href="#section-4.5" class="section-number selfRef">4.5. </a><a href="#name-one-challenge-per-transcrip" class="section-name selfRef">One challenge per transcript</a>
+        </h3>
+<p id="section-4.5-1">A transcript yields exactly one challenge. Absorbing after the challenge has been drawn, or
+requesting a second challenge, MUST fail. This is not hygiene; it is the core soundness property.
+Sharing a Schnorr blinding for a message <code>m</code> across two proofs that use <em>different</em> challenges
+<code>c_1 != c_2</code> hands the Verifier the message outright:<a href="#section-4.5-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-4.5-2">
+<pre>m^_1 - m^_2 = (m~ + c_1 * m) - (m~ + c_2 * m) = (c_1 - c_2) * m
+=&gt; m = (m^_1 - m^_2) / (c_1 - c_2)
+</pre><a href="#section-4.5-2" class="pilcrow">¶</a>
+</div>
+<p id="section-4.5-3">Every credkit construction that shares a blinding — witness equality, range binding, membership
+binding — relies on the two responses being taken under the <em>same</em> <code>c</code> so that this subtraction
+yields <code>0</code> and reveals nothing. The reference implementation demonstrates the recovery
+end-to-end as a test, to keep the "one challenge" rule from ever being relaxed.<a href="#section-4.5-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="composite-presentations">
+<section id="section-5">
+      <h2 id="name-composite-presentations">
+<a href="#section-5" class="section-number selfRef">5. </a><a href="#name-composite-presentations" class="section-name selfRef">Composite presentations</a>
+      </h2>
+<div id="message-space-and-index-conventions">
+<section id="section-5.1">
+        <h3 id="name-message-space-and-index-con">
+<a href="#section-5.1" class="section-number selfRef">5.1. </a><a href="#name-message-space-and-index-con" class="section-name selfRef">Message space and index conventions</a>
+        </h3>
+<p id="section-5.1-1">Message indices are in <em>message space</em>, identical to the blind BBS interface: signer-known
+messages occupy <code>0 .. L-1</code> and holder-committed messages occupy <code>L .. L+M-1</code>. The proof-space
+mapping — which inserts the always-hidden <code>secret_prover_blind</code> at proof index <code>L</code> — stays inside
+the BBS blind setup and is never exposed upward. Consequently the prover-blind slot cannot be the
+target of an equality constraint or a predicate: it is unreachable by construction.<a href="#section-5.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="structure">
+<section id="section-5.2">
+        <h3 id="name-structure">
+<a href="#section-5.2" class="section-number selfRef">5.2. </a><a href="#name-structure" class="section-name selfRef">Structure</a>
+        </h3>
+<p id="section-5.2-1">A <code>Presentation</code> produced by the Prover is:<a href="#section-5.2-1" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-5.2-2.1">
+            <code>proofs</code>: one BBS proof per statement, every one carrying the same <code>challenge</code>;<a href="#section-5.2-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-5.2-2.2">
+            <code>rangeProofs</code>: one range proof per range predicate, in spec order;<a href="#section-5.2-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-5.2-2.3">
+            <code>membershipProofs</code>: one set-membership proof per membership predicate, in spec order;<a href="#section-5.2-2.3" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-5.2-2.4">
+            <code>challenge</code>: the single merged challenge.<a href="#section-5.2-2.4" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-5.2-3">The Verifier is given the public <code>StatementDescriptor</code> for each statement (public key, header,
+disclosed messages, issuer-known count), the same <code>PresentationSpec</code> (equality constraints and
+predicate list) the Prover used, and the same presentation header.<a href="#section-5.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="witness-equality-the-link-secret">
+<section id="section-5.3">
+        <h3 id="name-witness-equality-the-link-s">
+<a href="#section-5.3" class="section-number selfRef">5.3. </a><a href="#name-witness-equality-the-link-s" class="section-name selfRef">Witness equality (the link secret)</a>
+        </h3>
+<p id="section-5.3-1">An equality constraint names two or more hidden message slots (across any statements) that must
+hold the same value. The Prover draws one fresh Schnorr blinding per equality class and injects
+it into every referenced slot's <code>m~</code> before <code>ProofInit</code> fixes the first-move commitments. Under
+the one merged challenge, each referenced slot's response is <code>m^ = m~ + c * m</code> with a common
+<code>m~</code>; the Verifier checks that the response scalars at all referenced slots are equal. Equal
+witnesses under a shared blinding and one challenge yield equal responses; unequal witnesses
+cannot (that would require <code>c * m_1 = c * m_2</code> for <code>m_1 != m_2</code>).<a href="#section-5.3-1" class="pilcrow">¶</a></p>
+<p id="section-5.3-2">The Prover additionally checks the witnesses really are equal before proving (it holds them), and
+rejects a slot referenced by more than one class. The Verifier's check is purely on the response
+scalars and reveals nothing about the shared value.<a href="#section-5.3-2" class="pilcrow">¶</a></p>
+<p id="section-5.3-3">The intended use is a link secret: a scalar the holder commits once (<code>Commit</code>) and has blindly
+signed (<code>BlindSign</code>) into credentials from multiple issuers. A presentation with an equality
+constraint on the link-secret slot of two statements proves the credentials belong to the same
+holder, unlinkably between presentations and without the issuers ever learning the secret. The
+blindness is essential — an issuer that learned the secret could, colluding with another issuer,
+join all of a holder's credentials.<a href="#section-5.3-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="randomness-independence">
+<section id="section-5.4">
+        <h3 id="name-randomness-independence">
+<a href="#section-5.4" class="section-number selfRef">5.4. </a><a href="#name-randomness-independence" class="section-name selfRef">Randomness independence</a>
+        </h3>
+<p id="section-5.4-1">Reusing one stateless randomness source across statements is the realistic way to accidentally
+share a blinding where independence is required (for example a shared <code>e~</code>, which would leak
+<code>e_1 - e_2 = (e^_1 - e^_2)/c</code> across two signatures). The Prover therefore enforces independence
+rather than assuming it: it rejects a presentation in which two statements drew identical
+randomness. Predicate randomness is subject to a stronger, joint check described in
+<a href="#shared-alphabet-randomness" class="auto internal xref">Section 8.4</a>.<a href="#section-5.4-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="predicates-over-hidden-messages">
+<section id="section-6">
+      <h2 id="name-predicates-over-hidden-mess">
+<a href="#section-6" class="section-number selfRef">6. </a><a href="#name-predicates-over-hidden-mess" class="section-name selfRef">Predicates over hidden messages</a>
+      </h2>
+<p id="section-6-1">Both predicate kinds are instances of the set-membership protocol of <span>[<a href="#CCS08" class="cite xref">CCS08</a>]</span>, whose security
+rests on the <code>u</code>-Strong Diffie-Hellman assumption via Boneh-Boyen signatures <span>[<a href="#BB04" class="cite xref">BB04</a>]</span>. Set
+membership is the base primitive; a range proof is its digit-decomposition composition.<a href="#section-6-1" class="pilcrow">¶</a></p>
+<div id="parameters-a-signed-alphabet">
+<section id="section-6.1">
+        <h3 id="name-parameters-a-signed-alphabe">
+<a href="#section-6.1" class="section-number selfRef">6.1. </a><a href="#name-parameters-a-signed-alphabe" class="section-name selfRef">Parameters: a signed alphabet</a>
+        </h3>
+<p id="section-6.1-1">A predicate's public parameters are a Boneh-Boyen signed set. The Verifier picks a signing scalar
+<code>x</code> once, publishes <code>y = G2.BASE * x</code> and one signature per set element,<a href="#section-6.1-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-6.1-2">
+<pre>A_j = G1.BASE * (1 / (x + members[j]))    (mod r in the exponent)
+</pre><a href="#section-6.1-2" class="pilcrow">¶</a>
+</div>
+<p id="section-6.1-3">and discards <code>x</code>. For a <strong>range</strong> predicate the set is the consecutive digit alphabet
+<code>{0, ..., u-1}</code> (<code>base = u</code>). For a <strong>set-membership</strong> predicate the set is any list of distinct
+scalars, in publication order. This is the entire "trusted setup": a Verifier that signs values
+outside the intended set only enables proofs it alone would accept, i.e. it only fools itself. A
+consumer importing third-party parameters can validate every signature by checking
+<code>e(A_j, y + G2.BASE * members[j]) == e(G1.BASE, G2.BASE)</code>; this catches a malformed alphabet but,
+by design, cannot catch a Verifier that hands out per-prover alphabets as tracking tags (see
+<a href="#per-prover-alphabets" class="auto internal xref">Section 8.7</a>).<a href="#section-6.1-3" class="pilcrow">¶</a></p>
+<p id="section-6.1-4">The Boneh-Boyen bases are the curve's standard generators, unrelated to the BBS message
+generators. The only quantity ever shared between a predicate proof and a BBS proof is a response
+scalar, never a group element, so no cross-family independence assumption is needed.<a href="#section-6.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="set-membership">
+<section id="section-6.2">
+        <h3 id="name-set-membership">
+<a href="#section-6.2" class="section-number selfRef">6.2. </a><a href="#name-set-membership" class="section-name selfRef">Set membership</a>
+        </h3>
+<p id="section-6.2-1">To prove a hidden value <code>m</code> (signed as a numeric BBS message) is one of the set members, the
+Prover selects the signature <code>A</code> on <code>m</code>, blinds it as <code>V = A * v</code> for a uniformly random nonzero
+<code>v</code> (so <code>V</code> is uniform in <code>G1 \ {O}</code>), and runs a Schnorr-style proof of the pairing relation<a href="#section-6.2-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-6.2-2">
+<pre>e(V, y) = e(V, G2.BASE)^(-m) * e(G1.BASE, G2.BASE)^(v)
+</pre><a href="#section-6.2-2" class="pilcrow">¶</a>
+</div>
+<p id="section-6.2-3">which holds iff <code>V</code> is a blinded Boneh-Boyen signature on <code>m</code>. Concretely:<a href="#section-6.2-3" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-6.2-4">
+<pre>first move:   R = e( V * (-m~) + G1.BASE * v~ ,  G2.BASE )
+responses:    response         = m~ + c * m
+              blindingResponse = v~ + c * v
+</pre><a href="#section-6.2-4" class="pilcrow">¶</a>
+</div>
+<p id="section-6.2-5">where <code>m~</code> is supplied by the composite layer (see below) and <code>v~</code> is fresh. The Verifier
+reconstructs<a href="#section-6.2-5" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-6.2-6">
+<pre>R = e( V * (-response) + G1.BASE * blindingResponse ,  G2.BASE )
+    * e( V * (-c) ,  y )
+</pre><a href="#section-6.2-6" class="pilcrow">¶</a>
+</div>
+<p id="section-6.2-7">using one batched pair of pairings, absorbs <code>V</code> and <code>R</code> into the transcript at the Prover's
+position, and confirms the re-derived challenge matches.<a href="#section-6.2-7" class="pilcrow">¶</a></p>
+<p id="section-6.2-8">The step that ties this to the credential is the binding: the composite layer passes the
+referenced BBS message's Schnorr blinding as <code>m~</code> directly. Then <code>response = m~ + c * m</code> is, by
+construction, the <em>same</em> scalar as the BBS proof's response <code>m^</code> for that slot — but only if the
+membership proof's <code>m</code> equals the credential's message and the challenge is shared. The Verifier
+checks <code>response == m^</code>. Under <code>u</code>-SDH a value outside the signed set would require a
+Boneh-Boyen forgery, so a passing proof establishes "the credential's hidden message is one of
+the signed members" while revealing which member to no one.<a href="#section-6.2-8" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="range-via-digit-decomposition">
+<section id="section-6.3">
+        <h3 id="name-range-via-digit-decompositi">
+<a href="#section-6.3" class="section-number selfRef">6.3. </a><a href="#name-range-via-digit-decompositi" class="section-name selfRef">Range via digit decomposition</a>
+        </h3>
+<p id="section-6.3-1">A range predicate proves a hidden value lies in <code>[0, u^L)</code> by decomposing it into <code>L</code> base-<code>u</code>
+digits and running one membership proof per digit against the alphabet <code>{0, ..., u-1}</code>. Writing
+<code>value = sum_i u^i * d_i</code> with each <code>d_i</code> in the alphabet:<a href="#section-6.3-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-6.3-2">
+<pre>per digit i:  V_i = A_{d_i} * v_i,   v_i uniform nonzero
+              R_i = e( V_i * (-d~_i) + G1.BASE * v~_i ,  G2.BASE )
+              d^_i = d~_i + c * d_i
+              v^_i = v~_i + c * v_i
+</pre><a href="#section-6.3-2" class="pilcrow">¶</a>
+</div>
+<p id="section-6.3-3">The digits are bound to a single value by the <strong>aggregate response</strong>:<a href="#section-6.3-3" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-6.3-4">
+<pre>sum_i u^i * d^_i = ( sum_i u^i * d~_i ) + c * value
+</pre><a href="#section-6.3-4" class="pilcrow">¶</a>
+</div>
+<p id="section-6.3-5">The right-hand blinding <code>sum_i u^i * d~_i</code> is the quantity the composite layer controls. The
+Prover draws the free blindings <code>d~_0 .. d~_{L-2}</code> at random and solves the last one, <code>d~_{L-1}</code>,
+so that <code>sum_i u^i * d~_i</code> equals a target it chooses; conditioned on the free draws this last
+value is uniform, so nothing leaks. The proof carries <code>V_i</code>, <code>d^_i</code>, <code>v^_i</code> per digit; there is
+no aggregate value on the wire — the Verifier recomputes <code>sum_i u^i * d^_i</code> from the digit
+responses.<a href="#section-6.3-5" class="pilcrow">¶</a></p>
+<div id="one-sided-ranges-and-the-bound">
+<section id="section-6.3.1">
+          <h4 id="name-one-sided-ranges-and-the-bo">
+<a href="#section-6.3.1" class="section-number selfRef">6.3.1. </a><a href="#name-one-sided-ranges-and-the-bo" class="section-name selfRef">One-sided ranges and the bound</a>
+          </h4>
+<p id="section-6.3.1-1">credkit exposes range predicates as one-sided comparisons against an inclusive <code>bound</code>:<a href="#section-6.3.1-1" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-6.3.1-2.1">
+              <code>greaterOrEqual</code>: prove <code>(m - bound) mod r</code> lies in <code>[0, u^L)</code>. The composite layer targets the
+aggregate blinding to <code>m~</code> (the message's own Schnorr blinding).<a href="#section-6.3.1-2.1" class="pilcrow">¶</a>
+</li>
+            <li class="compact" id="section-6.3.1-2.2">
+              <code>lessOrEqual</code>: prove <code>(bound - m) mod r</code> lies in <code>[0, u^L)</code>. The aggregate blinding is targeted
+to <code>-m~</code>.<a href="#section-6.3.1-2.2" class="pilcrow">¶</a>
+</li>
+          </ul>
+<p id="section-6.3.1-3">With those targets, the aggregate response equals a shift of the BBS response, and the Verifier's
+binding check <a href="#binding-a-predicate-to-a-signature" class="auto internal xref">Section 6.3.2</a> is a single linear relation. A two-sided
+range is two predicates against the same slot. This one-sided form is what makes "older than N"
+a single predicate: encode the date so that the honest difference is small and positive, and the
+incidental upper bound <code>u^L</code> is a harmless "younger than ~179 years".<a href="#section-6.3.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="binding-a-predicate-to-a-signature">
+<section id="section-6.3.2">
+          <h4 id="name-binding-a-predicate-to-a-si">
+<a href="#section-6.3.2" class="section-number selfRef">6.3.2. </a><a href="#name-binding-a-predicate-to-a-si" class="section-name selfRef">Binding a predicate to a signature</a>
+          </h4>
+<p id="section-6.3.2-1">Let <code>m^</code> be the BBS response for the referenced slot (the value the Verifier already reconstructs
+for that hidden message), <code>c</code> the merged challenge, and <code>bound</code> the predicate bound. After
+confirming the predicate's own sigma commitments re-derive the shared challenge, the Verifier
+checks, with <code>sigma = sum_i u^i * d^_i</code>:<a href="#section-6.3.2-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-6.3.2-2">
+<pre>greaterOrEqual:  sigma == m^ - c * bound       (mod r)
+lessOrEqual:     sigma == c * bound - m^        (mod r)
+membership:      response == m^                 (mod r)
+</pre><a href="#section-6.3.2-2" class="pilcrow">¶</a>
+</div>
+<p id="section-6.3.2-3">These are the checks that make the predicate about the <em>signed</em> value rather than about nothing.
+The reference implementation's tests include a Prover that runs perfectly valid digit or
+membership proofs over the <em>wrong</em> value; every such proof is caught here and only here, which is
+why the predicate package deliberately provides no self-contained "verify" and no internal
+challenge. A rewinding extractor recovers <code>sum_i u^i * d_i = value</code> (range) or the member (set)
+with each digit alphabet-bound, establishing the range or membership; the shared-blinding
+equality against <code>m^</code> establishes that <code>value</code> is the credential's hidden message.<a href="#section-6.3.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+</section>
+</div>
+<div id="wire-formats">
+<section id="section-7">
+      <h2 id="name-wire-formats">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-wire-formats" class="section-name selfRef">Wire formats</a>
+      </h2>
+<p id="section-7-1">All multi-octet lengths are <code>I2OSP(_, 8)</code>. <code>pointLength = 48</code> (<code>G1</code>), <code>scalarLength = 32</code>,
+<code>G2</code> length <code>= 96</code>.<a href="#section-7-1" class="pilcrow">¶</a></p>
+<div id="range-parameters">
+<section id="section-7.1">
+        <h3 id="name-range-parameters">
+<a href="#section-7.1" class="section-number selfRef">7.1. </a><a href="#name-range-parameters" class="section-name selfRef">Range parameters</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-7.1-1">
+<pre>range_params := I2OSP(base, 8) || publicKey || A_0 || ... || A_{base-1}
+</pre><a href="#section-7.1-1" class="pilcrow">¶</a>
+</div>
+<p id="section-7.1-2"><code>publicKey</code> is the 96-octet <code>G2</code> encoding of <code>y</code>; each <code>A_i</code> is 48 octets. Deserialization
+validates every point and rejects the identity.<a href="#section-7.1-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="set-membership-parameters">
+<section id="section-7.2">
+        <h3 id="name-set-membership-parameters">
+<a href="#section-7.2" class="section-number selfRef">7.2. </a><a href="#name-set-membership-parameters" class="section-name selfRef">Set-membership parameters</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-7.2-1">
+<pre>set_params := I2OSP(count, 8) || publicKey || ( I2OSP(members[j], 32) || A_j )  for j in 0..count-1
+</pre><a href="#section-7.2-1" class="pilcrow">¶</a>
+</div>
+<p id="section-7.2-2">Members are distinct scalars in <code>[0, r)</code>, serialized in publication order; the order is part of
+the transcript.<a href="#section-7.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="range-proof">
+<section id="section-7.3">
+        <h3 id="name-range-proof">
+<a href="#section-7.3" class="section-number selfRef">7.3. </a><a href="#name-range-proof" class="section-name selfRef">Range proof</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-7.3-1">
+<pre>range_proof := I2OSP(L, 8)
+            || V_0 || ... || V_{L-1}            # L * 48 octets
+            || d^_0 || ... || d^_{L-1}          # L * 32 octets
+            || v^_0 || ... || v^_{L-1}          # L * 32 octets
+</pre><a href="#section-7.3-1" class="pilcrow">¶</a>
+</div>
+<p id="section-7.3-2">Total <code>8 + L * 112</code> octets. Deserialization rejects an identity <code>V_i</code> and any out-of-range
+scalar.<a href="#section-7.3-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="set-membership-proof">
+<section id="section-7.4">
+        <h3 id="name-set-membership-proof">
+<a href="#section-7.4" class="section-number selfRef">7.4. </a><a href="#name-set-membership-proof" class="section-name selfRef">Set-membership proof</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-7.4-1">
+<pre>membership_proof := V || response || blindingResponse
+</pre><a href="#section-7.4-1" class="pilcrow">¶</a>
+</div>
+<p id="section-7.4-2">Fixed 112 octets (<code>48 + 32 + 32</code>). Deserialization rejects an identity <code>V</code>.<a href="#section-7.4-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="presentation">
+<section id="section-7.5">
+        <h3 id="name-presentation">
+<a href="#section-7.5" class="section-number selfRef">7.5. </a><a href="#name-presentation" class="section-name selfRef">Presentation</a>
+        </h3>
+<p id="section-7.5-1">The presentation carries the shared challenge exactly once, at the end, so a per-proof challenge
+mismatch is unrepresentable on the wire. Each BBS proof is serialized without its trailing
+challenge scalar.<a href="#section-7.5-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.5-2">
+<pre>presentation := I2OSP(N, 8)
+     || per statement:   I2OSP(len, 8) || bbs_proof_without_challenge
+     || I2OSP(K, 8)
+     || per range pred.: I2OSP(len, 8) || range_proof
+     || I2OSP(M, 8)
+     || per membership:  I2OSP(len, 8) || membership_proof
+     || challenge        # 32 octets
+</pre><a href="#section-7.5-2" class="pilcrow">¶</a>
+</div>
+<p id="section-7.5-3">On ingest the challenge is reattached to each BBS-proof body and the fully-validating BBS,
+range, and membership parsers are reused; the recovered challenge is taken from the first BBS
+proof, and verification <a href="#structure" class="auto internal xref">Section 5.2</a> independently re-derives it and compares.<a href="#section-7.5-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="security-considerations">
+<section id="section-8">
+      <h2 id="name-security-considerations">
+<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-security-considerations" class="section-name selfRef">Security considerations</a>
+      </h2>
+<div id="soundness-rests-on-one-challenge">
+<section id="section-8.1">
+        <h3 id="name-soundness-rests-on-one-chal">
+<a href="#section-8.1" class="section-number selfRef">8.1. </a><a href="#name-soundness-rests-on-one-chal" class="section-name selfRef">Soundness rests on one challenge</a>
+        </h3>
+<p id="section-8.1-1">As shown in <a href="#one-challenge" class="auto internal xref">Section 4.5</a>, all three shared-blinding constructions become unsound — in fact
+witness-revealing — if composed under more than one challenge. An implementation MUST derive one
+challenge over one transcript for the whole presentation. Composing linked or predicate proofs
+from independent single-proof invocations is the specific error to avoid.<a href="#section-8.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="range-ceiling">
+<section id="section-8.2">
+        <h3 id="name-ul-264-is-a-soundness-bound">
+<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-ul-264-is-a-soundness-bound" class="section-name selfRef"><code>u^L &lt;= 2^64</code> is a soundness bound, not a limit</a>
+        </h3>
+<p id="section-8.2-1">The one-sided range trick relies on a negative difference <code>(m - bound) mod r</code> being a <code>~2^255</code>
+scalar that cannot be written as <code>sum_i u^i * d_i</code> with each <code>d_i &lt; u</code> and <code>u^L &lt;= 2^64</code>. That
+undecomposability only holds while <code>u^L</code> is far below <code>r</code>. A Verifier that accepted <code>L</code> large
+enough for <code>u^L</code> to approach <code>r</code> would have proven nothing — every scalar would be "in range".
+Both the Prover and the Verifier MUST reject <code>u^L &gt; 2^64</code>.<a href="#section-8.2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="identity-v-must-be-rejected">
+<section id="section-8.3">
+        <h3 id="name-identity-v-must-be-rejected">
+<a href="#section-8.3" class="section-number selfRef">8.3. </a><a href="#name-identity-v-must-be-rejected" class="section-name selfRef">Identity <code>V</code> must be rejected</a>
+        </h3>
+<p id="section-8.3-1">An identity <code>V</code> satisfies the digit/membership pairing relation for <em>any</em> claimed digit or member
+with <code>v = 0</code>, which voids the alphabet bound entirely. Provers draw <code>v != 0</code>; Verifiers and
+deserializers MUST reject an identity <code>V</code>.<a href="#section-8.3-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="shared-alphabet-randomness">
+<section id="section-8.4">
+        <h3 id="name-shared-alphabet-randomness-">
+<a href="#section-8.4" class="section-number selfRef">8.4. </a><a href="#name-shared-alphabet-randomness-" class="section-name selfRef">Shared alphabet randomness is brute-forceable</a>
+        </h3>
+<p id="section-8.4-1">Independence of the blinding <code>v</code> across alphabet proofs is not merely hygiene here. If two
+alphabet proofs reuse one <code>v</code>, then <code>V_1 = A_a * v</code> and <code>V_2 = B_b * v</code> satisfy<a href="#section-8.4-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-8.4-2">
+<pre>e(V_1, y_1 + a * G2.BASE) == e(V_2, y_2 + b * G2.BASE)
+</pre><a href="#section-8.4-2" class="pilcrow">¶</a>
+</div>
+<p id="section-8.4-3">and because alphabets are small (a base-16 digit alphabet, a handful of set members), a Verifier
+can sweep all candidate pairs <code>(a, b)</code> and recover both hidden values outright — the values, not
+just a relation, at trivial cost. The Prover therefore enforces first-drawn-scalar independence
+<em>jointly</em> across all range and membership proofs in a presentation, not per proof.<a href="#section-8.4-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="modular-predicate-semantics">
+<section id="section-8.5">
+        <h3 id="name-modular-predicate-semantics">
+<a href="#section-8.5" class="section-number selfRef">8.5. </a><a href="#name-modular-predicate-semantics" class="section-name selfRef">Modular predicate semantics</a>
+        </h3>
+<p id="section-8.5-1">A predicate proves a statement about scalars mod <code>r</code>: <code>greaterOrEqual</code> proves
+<code>(m - bound) mod r ∈ [0, u^L)</code>. It reads as the natural <code>&gt;=</code>/<code>&lt;=</code> only because the application
+encodes honest values well below <code>r</code> — for example a date of birth as days since 1900, or an
+integer under <code>2^64</code>. An application that signs values near <code>r</code> and expects signed comparison is
+using the predicate outside the regime where its plain-language reading holds. This is an
+application responsibility; the library enforces the <code>2^64</code> ceiling on <code>u^L</code> but cannot know an
+application's intended encoding.<a href="#section-8.5-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="trusted-setup-and-u-sdh">
+<section id="section-8.6">
+        <h3 id="name-trusted-setup-and-u-sdh">
+<a href="#section-8.6" class="section-number selfRef">8.6. </a><a href="#name-trusted-setup-and-u-sdh" class="section-name selfRef">Trusted setup and <code>u</code>-SDH</a>
+        </h3>
+<p id="section-8.6-1">The only trust the parameters require is that the signing scalar <code>x</code> was discarded. A Verifier
+that keeps <code>x</code> gains nothing it did not already have — it can already accept or reject at will;
+the alphabet is <em>its own</em> acceptance policy. Soundness against the Prover reduces to <code>u</code>-SDH:
+exhibiting a valid blinded signature on a value outside the signed set is a Boneh-Boyen forgery.
+A consumer using third-party parameters SHOULD validate them once on import.<a href="#section-8.6-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="per-prover-alphabets">
+<section id="section-8.7">
+        <h3 id="name-per-prover-alphabets-are-a-">
+<a href="#section-8.7" class="section-number selfRef">8.7. </a><a href="#name-per-prover-alphabets-are-a-" class="section-name selfRef">Per-prover alphabets are a linkability trap</a>
+        </h3>
+<p id="section-8.7-1">Parameter validation confirms an alphabet is well-formed; it cannot detect a Verifier that issues
+a <em>distinct</em> well-formed alphabet to each Prover, turning an otherwise unlinkable predicate proof
+into a per-Prover tag. This is the same linkability class as per-Prover BBS generators. Provers
+SHOULD fetch predicate parameters from the same published location as every other Prover, and
+treat a Verifier-specific alphabet as a red flag.<a href="#section-8.7-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="transcript-order-binding">
+<section id="section-8.8">
+        <h3 id="name-transcript-order-binding">
+<a href="#section-8.8" class="section-number selfRef">8.8. </a><a href="#name-transcript-order-binding" class="section-name selfRef">Transcript order binding</a>
+        </h3>
+<p id="section-8.8-1">Statement, constraint, and predicate order is bound into the challenge and is not canonicalized.
+A Prover and Verifier that disagree on order produce different challenges and the presentation
+fails closed, rather than a canonicalizer masking the disagreement. Likewise the full serialized
+predicate parameters — including the member list and its order — are absorbed, so a Verifier
+cannot narrow, widen, re-sign, or reorder the set after the fact without the challenge changing.<a href="#section-8.8-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="fail-closed-verification">
+<section id="section-8.9">
+        <h3 id="name-fail-closed-verification">
+<a href="#section-8.9" class="section-number selfRef">8.9. </a><a href="#name-fail-closed-verification" class="section-name selfRef">Fail-closed verification</a>
+        </h3>
+<p id="section-8.9-1">Verification returns a boolean and MUST return <code>false</code> on any malformed input, broken transcript,
+or failed check; the octet parsers throw on malformed input. Every point and scalar entering from
+the wire is range- and subgroup-validated.<a href="#section-8.9-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="privacy-considerations">
+<section id="section-9">
+      <h2 id="name-privacy-considerations">
+<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy considerations</a>
+      </h2>
+<div id="verifier-unlinkability-is-preserved-by-omission">
+<section id="section-9.1">
+        <h3 id="name-verifier-unlinkability-is-p">
+<a href="#section-9.1" class="section-number selfRef">9.1. </a><a href="#name-verifier-unlinkability-is-p" class="section-name selfRef">Verifier unlinkability is preserved by omission</a>
+        </h3>
+<p id="section-9.1-1">BBS proofs are randomized per presentation, so unlinkability is a property credkit must avoid
+<em>destroying</em>, not one it must add. It is preserved by never placing a stable, disclosed value in
+a presentation: predicates disclose the truth of a comparison, never a commitment or a value.
+This is the specific improvement over disclosing a fixed commitment to a sensitive attribute, in
+which the commitment is a perfect cross-verifier correlation handle.<a href="#section-9.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="what-a-predicate-reveals">
+<section id="section-9.2">
+        <h3 id="name-what-a-predicate-reveals">
+<a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-what-a-predicate-reveals" class="section-name selfRef">What a predicate reveals</a>
+        </h3>
+<p id="section-9.2-1">A range predicate reveals only that the hidden value satisfies the one-sided comparison (and, as
+a side effect of the construction, that it lies below <code>u^L</code>). A membership predicate reveals only
+that the hidden value is one of the published members, never which. An equality constraint
+reveals only that the referenced slots are equal, never the shared value. The number and kind of
+predicates, and the parameters used, are of course visible in the spec both parties share.<a href="#section-9.2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="the-cryptosuite-layer">
+<section id="section-10">
+      <h2 id="name-the-cryptosuite-layer">
+<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-the-cryptosuite-layer" class="section-name selfRef">The cryptosuite layer</a>
+      </h2>
+<p id="section-10-1">A JSON-LD Data Integrity cryptosuite that packages these presentations as W3C Verifiable
+Credentials <span>[<a href="#VC-DATA-MODEL" class="cite xref">VC-DATA-MODEL</a>]</span>, in the manner of <code>bbs-2023</code> <span>[<a href="#DI-BBS" class="cite xref">DI-BBS</a>]</span>, is implemented for the
+single-credential case. It is summarized here to place the layers above in context; its full
+specification is a separate matter and is not attempted in this document.<a href="#section-10-1" class="pilcrow">¶</a></p>
+<ul class="compact">
+<li class="compact" id="section-10-2.1">
+          <strong>Kept</strong> from <code>bbs-2023</code>: RDF Dataset Canonicalization of the credential, the per-base-proof
+HMAC label shuffle, the JSON-Pointer split between mandatory and selectively disclosed
+statements (mandatory statements folded into the BBS header as <code>proofHash || mandatoryHash</code>),
+one BBS message per non-mandatory N-Quad, and a CBOR-then-multibase proof-value envelope.<a href="#section-10-2.1" class="pilcrow">¶</a>
+</li>
+        <li class="compact" id="section-10-2.2">
+          <strong>Replaced</strong>: the proof. Every derived proof is a credkit presentation
+<a href="#composite-presentations" class="auto internal xref">Section 5</a> rather than a single BBS proof — including plain selective
+disclosure with no predicates, so there is one derivation path and no <code>bbs-2023</code>-shaped special
+case (the uniform-single-statement rule of
+<a href="#deliberate-non-interoperability-above-the-core" class="auto internal xref">Section 3.4</a>, one layer up). The cryptosuite identifier,
+<code>@context</code>, and CBOR envelope prefix bytes are disjoint from <code>bbs-2023</code>'s, so a credkit proof
+value can never parse as a <code>bbs-2023</code> one; the suite makes no interoperability claim.<a href="#section-10-2.2" class="pilcrow">¶</a>
+</li>
+        <li class="compact" id="section-10-2.3">
+          <strong>Added — the numeric seam.</strong> A predicate needs the message scalar to <em>be</em> the value
+<a href="#numeric-messages" class="auto internal xref">Section 3.1</a>, but a <code>bbs-2023</code> message is a hash of an N-Quad string and no arithmetic
+survives the hash. The issuer therefore appends, after the quad messages, one numeric ("twin")
+message per entry of a declared list of <code>(JSON-Pointer, encoderId)</code> pairs: the value at that
+pointer, encoded (for example a date as days since 1900) as an integer message
+<a href="#numeric-messages" class="auto internal xref">Section 3.1</a>. The twin block is always hidden by construction and is bound as a third
+BBS header segment, <code>bbsHeader = proofHash || mandatoryHash || H(serialize(numericDecl))</code>, so a
+Prover cannot lie about a slot's meaning without breaking header reconstruction — the binding is
+the signature itself, not a new mechanism, and the declaration carries no per-credential
+correlation handle into the disclosed document. Range, set-membership, and equality claims all
+point at twins; the last yields cross-issuer equality over a hidden value when both issuers
+declared the same encoder.<a href="#section-10-2.3" class="pilcrow">¶</a>
+</li>
+      </ul>
+<p id="section-10-3">The multi-credential case — N credentials under one merged challenge inside a Verifiable
+Presentation — is designed but not yet built. The intended shape is a Verifiable Presentation
+secured by a <em>second</em> Data Integrity cryptosuite: each embedded credential carries a <em>statement
+descriptor</em> (its reconstruction data — mode, label map, index sets, N-Quads, numeric declaration,
+and the issuer's verification-method identifier, never a key), and the presentation-level proof
+carries the merged credkit presentation of <a href="#composite-presentations" class="auto internal xref">Section 5</a> together with the equality
+constraints and per-statement claim lists. The <code>@container: @graph</code> semantics of the VC v2 context
+mean the presentation body is a carrier the presentation proof need not hash over — each credential
+is already bound by its own BBS signature and absorbed into the merged transcript — so reordering
+or substituting credentials breaks the challenge without an envelope-level integrity check. The
+design record and its rationale are FINDINGS §14–§16 in the repository; this document specifies the
+presentation and predicate layer those build on, not the cryptosuite envelope.<a href="#section-10-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="iana-considerations">
+<section id="section-11">
+      <h2 id="name-iana-considerations">
+<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA considerations</a>
+      </h2>
+<p id="section-11-1">This document has no IANA actions. It defines no new registries and requests no code points.<a href="#section-11-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<section id="section-12">
+      <h2 id="name-references">
+<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-references" class="section-name selfRef">References</a>
+      </h2>
+<section id="section-12.1">
+        <h3 id="name-normative-references">
+<a href="#section-12.1" class="section-number selfRef">12.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+        </h3>
+<dl class="references">
+<dt id="I-D.irtf-cfrg-bbs-blind-signatures">[I-D.irtf-cfrg-bbs-blind-signatures]</dt>
+        <dd>
+<span class="refAuthor">Kalos, V.</span> and <span class="refAuthor">G. M. Bernstein</span>, <span class="refTitle">"Blind BBS Signatures"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-irtf-cfrg-bbs-blind-signatures-03</span>, <time datetime="2026-06-26" class="refDate">26 June 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bbs-blind-signatures-03">https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bbs-blind-signatures-03</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.irtf-cfrg-bbs-signatures">[I-D.irtf-cfrg-bbs-signatures]</dt>
+      <dd>
+<span class="refAuthor">Looker, T.</span>, <span class="refAuthor">Kalos, V.</span>, <span class="refAuthor">Whitehead, A.</span>, and <span class="refAuthor">M. Lodder</span>, <span class="refTitle">"The BBS Signature Scheme"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-irtf-cfrg-bbs-signatures-10</span>, <time datetime="2026-01-08" class="refDate">8 January 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bbs-signatures-10">https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bbs-signatures-10</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+<section id="section-12.2">
+        <h3 id="name-informative-references">
+<a href="#section-12.2" class="section-number selfRef">12.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
+        </h3>
+<dl class="references">
+<dt id="BB04">[BB04]</dt>
+        <dd>
+<span class="refAuthor">Boneh, D.</span> and <span class="refAuthor">X. Boyen</span>, <span class="refTitle">"Short Signatures Without Random Oracles"</span>, <span class="seriesInfo">In EUROCRYPT</span>, <time datetime="2004" class="refDate">2004</time>, <span>&lt;<a href="https://link.springer.com/chapter/10.1007/978-3-540-24676-3_4">https://link.springer.com/chapter/10.1007/978-3-540-24676-3_4</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="CCS08">[CCS08]</dt>
+        <dd>
+<span class="refAuthor">Camenisch, J.</span>, <span class="refAuthor">Chaabouni, R.</span>, and <span class="refAuthor">a. shelat</span>, <span class="refTitle">"Efficient Protocols for Set Membership and Range Proofs"</span>, <span class="seriesInfo">In ASIACRYPT</span>, <time datetime="2008" class="refDate">2008</time>, <span>&lt;<a href="https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15">https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="DI-BBS">[DI-BBS]</dt>
+        <dd>
+<span class="refAuthor">W3C</span>, <span class="refTitle">"Data Integrity BBS Cryptosuites v1.0"</span>, <time datetime="2025" class="refDate">2025</time>, <span>&lt;<a href="https://www.w3.org/TR/vc-di-bbs/">https://www.w3.org/TR/vc-di-bbs/</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="FrozenHeart">[FrozenHeart]</dt>
+        <dd>
+<span class="refAuthor">Trail of Bits</span>, <span class="refTitle">"The Frozen Heart vulnerability in Fiat-Shamir implementations"</span>, <time datetime="2022" class="refDate">2022</time>, <span>&lt;<a href="https://blog.trailofbits.com/2022/04/13/part-1-coordinated-disclosure-of-vulnerabilities-affecting-girault-bulletproofs-and-plonk/">https://blog.trailofbits.com/2022/04/13/part-1-coordinated-disclosure-of-vulnerabilities-affecting-girault-bulletproofs-and-plonk/</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC2119">[RFC2119]</dt>
+        <dd>
+<span class="refAuthor">Bradner, S.</span>, <span class="refTitle">"Key words for use in RFCs to Indicate Requirement Levels"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 2119</span>, <span class="seriesInfo">DOI 10.17487/RFC2119</span>, <time datetime="1997-03" class="refDate">March 1997</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc2119">https://www.rfc-editor.org/info/rfc2119</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8017">[RFC8017]</dt>
+        <dd>
+<span class="refAuthor">Moriarty, K., Ed.</span>, <span class="refAuthor">Kaliski, B.</span>, <span class="refAuthor">Jonsson, J.</span>, and <span class="refAuthor">A. Rusch</span>, <span class="refTitle">"PKCS #1: RSA Cryptography Specifications Version 2.2"</span>, <span class="seriesInfo">RFC 8017</span>, <span class="seriesInfo">DOI 10.17487/RFC8017</span>, <time datetime="2016-11" class="refDate">November 2016</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc8017">https://www.rfc-editor.org/info/rfc8017</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8174">[RFC8174]</dt>
+        <dd>
+<span class="refAuthor">Leiba, B.</span>, <span class="refTitle">"Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 8174</span>, <span class="seriesInfo">DOI 10.17487/RFC8174</span>, <time datetime="2017-05" class="refDate">May 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc8174">https://www.rfc-editor.org/info/rfc8174</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9380">[RFC9380]</dt>
+        <dd>
+<span class="refAuthor">Faz-Hernandez, A.</span>, <span class="refAuthor">Scott, S.</span>, <span class="refAuthor">Sullivan, N.</span>, <span class="refAuthor">Wahby, R. S.</span>, and <span class="refAuthor">C. A. Wood</span>, <span class="refTitle">"Hashing to Elliptic Curves"</span>, <span class="seriesInfo">RFC 9380</span>, <span class="seriesInfo">DOI 10.17487/RFC9380</span>, <time datetime="2023-08" class="refDate">August 2023</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc9380">https://www.rfc-editor.org/info/rfc9380</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="VC-DATA-MODEL">[VC-DATA-MODEL]</dt>
+      <dd>
+<span class="refAuthor">W3C</span>, <span class="refTitle">"Verifiable Credentials Data Model v2.0"</span>, <time datetime="2025" class="refDate">2025</time>, <span>&lt;<a href="https://www.w3.org/TR/vc-data-model-2.0/">https://www.w3.org/TR/vc-data-model-2.0/</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</section>
+<div id="authors-addresses">
+<section id="appendix-A">
+      <h2 id="name-authors-address">
+<a href="#name-authors-address" class="section-name selfRef">Author's Address</a>
+      </h2>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Tomislav Markovski</span></div>
+<div dir="auto" class="left"><span class="org">credkit</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:tmarkovski@gmail.com" class="email">tmarkovski@gmail.com</a>
+</div>
+</address>
+</section>
+</div>
+<script>const toc = document.getElementById("toc");
+toc.querySelector("h2").addEventListener("click", e => {
+  toc.classList.toggle("active");
+});
+toc.querySelector("nav").addEventListener("click", e => {
+  toc.classList.remove("active");
+});
+</script>
+</body>
+</html>

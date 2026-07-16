@@ -7,7 +7,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "fixtures:refresh": "./scripts/refresh-fixtures.sh"
+    "fixtures:refresh": "./scripts/refresh-fixtures.sh",
+    "docs:render": "./scripts/render-draft.sh"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

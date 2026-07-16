@@ -126,3 +126,10 @@ Not your problem yet, but it explains the API constraints above:
 - **`packages/cryptosuite`** — the JSON-LD suite. Bespoke; no interop pretense. *(Built —
   design in FINDINGS §14, implementation record in §15. Single-credential; the N-statement
   presentation envelope is designed in §16 and is the one piece still outstanding.)*
+
+The composite and predicate layers underneath are now also written up spec-style, for readers
+who speak IETF/W3C drafts rather than TypeScript, in
+[draft-credkit-composite-proofs.md](draft-credkit-composite-proofs.md) (mmark, the same
+toolchain as the vendored blind-BBS snapshot): the divergences from IETF BBS, the merged
+Fiat-Shamir transcript, the CCS set-membership and range predicates, and the response-scalar
+bindings.

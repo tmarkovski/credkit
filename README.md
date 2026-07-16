@@ -57,6 +57,9 @@ docs/
   BRIEF.md       start here — what to build, in what order, how to verify
   FINDINGS.md    the research record: decisions and why, with evidence
   REFERENCES.md  reference implementations and what each is actually good for
+  draft-credkit-composite-proofs.md
+                 spec-style writeup (mmark) of the composite + predicate layers:
+                 divergences from IETF BBS, the merged transcript, CCS predicates
 ```
 
 ## Ground rules
