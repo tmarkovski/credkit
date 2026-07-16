@@ -116,6 +116,13 @@ To regenerate the committed HTML draft (requires `mmark` and `xml2rfc`):
 pnpm docs:render
 ```
 
+## Demo
+
+[![See credkit in action: blind issuance, selective disclosure, and private age proofs.](docs/verygoodwallet-demo-banner.webp)](https://verygoodwallet.com)
+
+[Very Good Wallet](https://verygoodwallet.com) is a demonstration wallet built on this
+repository, showing how the constructions in the spec are used in a working credential flow.
+
 ## License
 
 Released into the public domain under [The Unlicense](LICENSE).
