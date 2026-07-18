@@ -1631,6 +1631,27 @@ privacy, not imposing a conformance requirement on anyone.<a href="#section-1.1-
 generation algorithm's per-message Schnorr blindings so an outer protocol can reuse them. Both
 are described precisely in <a href="#divergences-from-ietf-bbs" class="auto internal xref">Section 3</a>. Everything else in that layer is the
 IETF construction as written.<a href="#section-1.2-3" class="pilcrow">¶</a></p>
+<p id="section-1.2-4">Two adjacent CFRG efforts deserve precise situating. <span>[<a href="#I-D.irtf-cfrg-sigma-protocols" class="cite xref">I-D.irtf-cfrg-sigma-protocols</a>]</span>
+standardizes interactive sigma protocols proving knowledge of preimages of linear maps in
+prime-order groups, and <span>[<a href="#I-D.irtf-cfrg-fiat-shamir" class="cite xref">I-D.irtf-cfrg-fiat-shamir</a>]</span> standardizes their non-interactive form
+via a duplex-sponge transcript. This document is structurally aligned with both: each statement
+is proven in the same commit/challenge/response phases (the split-phase interface of
+<a href="#reachable-schnorr-blindings-and-split-phase-proof-generation" class="auto internal xref">Section 3.2</a> is that draft's
+<code>prover_commit</code>/<code>prover_response</code> decomposition), and the transcript of
+<a href="#the-merged-fiat-shamir-transcript" class="auto internal xref">Section 4</a> enforces the same discipline — labeled prefix-free
+absorption, protocol and ciphersuite binding, and exactly one challenge per transcript. This
+document is not, however, an instantiation of either draft, for three reasons. First, AND
+composition of statements under one challenge — the mechanism this document exists to describe —
+is explicitly out of scope of <span>[<a href="#I-D.irtf-cfrg-sigma-protocols" class="cite xref">I-D.irtf-cfrg-sigma-protocols</a>]</span>. Second, challenge derivation
+here stays in the BBS <code>hash_to_scalar</code> family rather than adopting the Keccak duplex sponge of
+<span>[<a href="#I-D.irtf-cfrg-fiat-shamir" class="cite xref">I-D.irtf-cfrg-fiat-shamir</a>]</span>: the BBS layer must derive challenges with <code>hash_to_scalar</code> to
+conform to <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>, and running a second derivation primitive in the
+composite layer would be exactly the two-path Fiat-Shamir fork that <a href="#one-challenge" class="auto internal xref">Section 4.5</a> exists to
+prevent. Third, <span>[<a href="#I-D.irtf-cfrg-sigma-protocols" class="cite xref">I-D.irtf-cfrg-sigma-protocols</a>]</span> currently defines only P-256 normatively, and
+neither the BBS pairing verification equation nor the <code>GT</code>-valued predicate commitments of
+<a href="#predicates-over-hidden-messages" class="auto internal xref">Section 6</a> fall within its linear-map scope. Should those drafts mature
+to cover BLS12-381 and statement composition, re-aligning this layer's transcript with them is a
+natural future revision.<a href="#section-1.2-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="terminology">
@@ -1889,6 +1910,11 @@ sharing one challenge, derived by hashing one transcript. The transcript constru
 place where an ad-hoc <code>H(a || b || c)</code> concatenation would let a malicious Prover shift octets
 between fields and forge a proof over a different statement that hashes identically — the
 "Frozen Heart" bug class <span>[<a href="#FrozenHeart" class="cite xref">FrozenHeart</a>]</span>. The rules below exist to make that impossible.<a href="#section-4-1" class="pilcrow">¶</a></p>
+<p id="section-4-2">The construction follows the same transcript discipline as <span>[<a href="#I-D.irtf-cfrg-fiat-shamir" class="cite xref">I-D.irtf-cfrg-fiat-shamir</a>]</span> —
+labeled prefix-free absorption, initial protocol binding, one squeeze — but derives the
+challenge with the BBS <code>hash_to_scalar</code> rather than that draft's Keccak duplex sponge, keeping a
+single challenge-derivation primitive across the BBS and composite layers (see
+<a href="#relationship-to-existing-specifications" class="auto internal xref">Section 1.2</a>).<a href="#section-4-2" class="pilcrow">¶</a></p>
 <div id="absorption">
 <section id="section-4.1">
         <h3 id="name-absorption">
@@ -2596,6 +2622,14 @@ and predicate layer those build on, not the cryptosuite envelope.<a href="#secti
 <dt id="FrozenHeart">[FrozenHeart]</dt>
         <dd>
 <span class="refAuthor">Trail of Bits</span>, <span class="refTitle">"The Frozen Heart vulnerability in Fiat-Shamir implementations"</span>, <time datetime="2022" class="refDate">2022</time>, <span>&lt;<a href="https://blog.trailofbits.com/2022/04/13/part-1-coordinated-disclosure-of-vulnerabilities-affecting-girault-bulletproofs-and-plonk/">https://blog.trailofbits.com/2022/04/13/part-1-coordinated-disclosure-of-vulnerabilities-affecting-girault-bulletproofs-and-plonk/</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.irtf-cfrg-fiat-shamir">[I-D.irtf-cfrg-fiat-shamir]</dt>
+        <dd>
+<span class="refAuthor">Orrù, M.</span>, <span class="refTitle">"Fiat-Shamir Transformation"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-irtf-cfrg-fiat-shamir-02</span>, <time datetime="2026-03-02" class="refDate">2 March 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-fiat-shamir-02">https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-fiat-shamir-02</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.irtf-cfrg-sigma-protocols">[I-D.irtf-cfrg-sigma-protocols]</dt>
+        <dd>
+<span class="refAuthor">Orrù, M.</span> and <span class="refAuthor">C. Yun</span>, <span class="refTitle">"Interactive Sigma Proofs"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-irtf-cfrg-sigma-protocols-02</span>, <time datetime="2026-03-02" class="refDate">2 March 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-sigma-protocols-02">https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-sigma-protocols-02</a>&gt;</span>. </dd>
 <dd class="break"></dd>
 <dt id="RFC2119">[RFC2119]</dt>
         <dd>

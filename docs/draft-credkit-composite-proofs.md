@@ -118,6 +118,28 @@ generation algorithm's per-message Schnorr blindings so an outer protocol can re
 are described precisely in (#divergences-from-ietf-bbs). Everything else in that layer is the
 IETF construction as written.
 
+Two adjacent CFRG efforts deserve precise situating. [@?I-D.irtf-cfrg-sigma-protocols]
+standardizes interactive sigma protocols proving knowledge of preimages of linear maps in
+prime-order groups, and [@?I-D.irtf-cfrg-fiat-shamir] standardizes their non-interactive form
+via a duplex-sponge transcript. This document is structurally aligned with both: each statement
+is proven in the same commit/challenge/response phases (the split-phase interface of
+(#reachable-schnorr-blindings-and-split-phase-proof-generation) is that draft's
+`prover_commit`/`prover_response` decomposition), and the transcript of
+(#the-merged-fiat-shamir-transcript) enforces the same discipline — labeled prefix-free
+absorption, protocol and ciphersuite binding, and exactly one challenge per transcript. This
+document is not, however, an instantiation of either draft, for three reasons. First, AND
+composition of statements under one challenge — the mechanism this document exists to describe —
+is explicitly out of scope of [@?I-D.irtf-cfrg-sigma-protocols]. Second, challenge derivation
+here stays in the BBS `hash_to_scalar` family rather than adopting the Keccak duplex sponge of
+[@?I-D.irtf-cfrg-fiat-shamir]: the BBS layer must derive challenges with `hash_to_scalar` to
+conform to [@!I-D.irtf-cfrg-bbs-signatures], and running a second derivation primitive in the
+composite layer would be exactly the two-path Fiat-Shamir fork that (#one-challenge) exists to
+prevent. Third, [@?I-D.irtf-cfrg-sigma-protocols] currently defines only P-256 normatively, and
+neither the BBS pairing verification equation nor the `GT`-valued predicate commitments of
+(#predicates-over-hidden-messages) fall within its linear-map scope. Should those drafts mature
+to cover BLS12-381 and statement composition, re-aligning this layer's transcript with them is a
+natural future revision.
+
 ## Terminology
 
 Holder, Issuer, Verifier, Prover, and the BBS operation names (`Sign`, `Commit`, `BlindSign`,
@@ -299,6 +321,12 @@ sharing one challenge, derived by hashing one transcript. The transcript constru
 place where an ad-hoc `H(a || b || c)` concatenation would let a malicious Prover shift octets
 between fields and forge a proof over a different statement that hashes identically — the
 "Frozen Heart" bug class [@FrozenHeart]. The rules below exist to make that impossible.
+
+The construction follows the same transcript discipline as [@?I-D.irtf-cfrg-fiat-shamir] —
+labeled prefix-free absorption, initial protocol binding, one squeeze — but derives the
+challenge with the BBS `hash_to_scalar` rather than that draft's Keccak duplex sponge, keeping a
+single challenge-derivation primitive across the BBS and composite layers (see
+(#relationship-to-existing-specifications)).
 
 ## Absorption
 

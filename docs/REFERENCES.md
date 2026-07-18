@@ -21,6 +21,23 @@ convenience, not authoritative.
 `draft-irtf-cfrg-bbs-signatures` (currently -10) plus tooling. The base scheme our blind
 extension sits on. Also ships fixtures.
 
+### `draft-irtf-cfrg-sigma-protocols` + `draft-irtf-cfrg-fiat-shamir` — alignment, not adoption
+CFRG's generic sigma-protocol framework and its Fiat-Shamir companion, both Informational -02
+(March 2026). Cited as informative references in `draft-credkit-composite-proofs`. We match
+their shapes: the split-phase proof API is their `prover_commit`/`prover_response`
+decomposition, and our transcript enforces the same labeled prefix-free absorption /
+one-squeeze discipline the FS draft mandates.
+
+**Do not adopt their bytes.** Three hard blockers, re-verified July 2026: (1) AND composition —
+our entire composite layer — is explicitly out of scope of sigma-protocols ("NOT described in
+this specification"); (2) the FS draft mandates a Keccak/SHAKE duplex sponge with mod-p
+challenge reduction, a different derivation family than BBS `hash_to_scalar` — adopting it in
+the composite layer while the BBS layer keeps `hash_to_scalar` for fixture conformance would be
+the two-path Fiat-Shamir fork FINDINGS §11 refuses; (3) only P-256 is normative (BLS12-381
+appears in test-vector names only), and pairing equations / GT commitments are outside its
+linear-map scope. Re-check if the drafts grow BLS12-381 ciphersuites and composition — that
+would be the moment to re-align the transcript.
+
 ### `w3c/vc-di-bbs` — the W3C cryptosuite (structure donor, not a compliance target)
 [Data Integrity BBS Cryptosuites v1.0](https://www.w3.org/TR/vc-di-bbs/), **Candidate
 Recommendation Draft, 7 April 2026** — no longer the 2023 WD the incumbent stack implements.

@@ -75,6 +75,14 @@ The standards boundary is intentional:
 
 The draft is a reviewable description of the construction, not a standards-track proposal. It
 covers the composite presentation and predicate layers and summarizes the JSON-LD integration.
+It is structurally aligned with CFRG's emerging sigma-protocol work
+([draft-irtf-cfrg-sigma-protocols](https://datatracker.ietf.org/doc/draft-irtf-cfrg-sigma-protocols/),
+[draft-irtf-cfrg-fiat-shamir](https://datatracker.ietf.org/doc/draft-irtf-cfrg-fiat-shamir/)) —
+the same commit/challenge/response phases and the same labeled, single-squeeze transcript
+discipline — and cites both as informative references. It is not an instantiation of them:
+AND composition of statements is explicitly out of scope of those drafts, and challenge
+derivation stays in the BBS `hash_to_scalar` family so the BBS and composite layers share one
+derivation path.
 
 ## Getting started
 
