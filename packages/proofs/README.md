@@ -2,12 +2,15 @@
 
 Composite proof framework over [`@credkit/bbs`](../bbs): present N credentials under **one
 merged Fiat–Shamir challenge**, with witness equality across hidden messages (the link-secret
-mechanic) and range predicates over hidden numeric messages (CCS digit proofs from
-[`@credkit/range`](../range)). Pure TypeScript, no WASM.
+mechanic), range and set-membership predicates over hidden numeric messages (from
+[`@credkit/range`](../range)), and accumulator membership proofs that act as non-revocation gates
+(from [`@credkit/accumulator`](../accumulator)). Pure TypeScript, no WASM.
 
-**Status: implemented.** No spec and no fixtures exist for this layer; the design decisions
-are recorded in [`docs/FINDINGS.md`](../../docs/FINDINGS.md) §11 and §12 and pinned by this
-package's own golden-vector tests. **Read [`docs/BRIEF.md`](../../docs/BRIEF.md) first.**
+**Status: implemented.** The construction is described in the
+[`draft specification`](../../docs/draft-credkit-composite-proofs.md); the design decisions are
+recorded in [`docs/FINDINGS.md`](../../docs/FINDINGS.md) §11–§13 and §18 and pinned by this
+package's own golden-vector tests. There are no independent implementations or external fixtures.
+**Read [`docs/BRIEF.md`](../../docs/BRIEF.md) first.**
 
 ## What's here
 
@@ -18,6 +21,7 @@ package's own golden-vector tests. **Read [`docs/BRIEF.md`](../../docs/BRIEF.md)
 | `test/proofs.test.ts` | E2E link-secret flow, golden vectors, fail-closed negatives, and the witness-recovery demo. |
 | `test/predicates.test.ts` | E2E age-over-18 flow, predicate negatives, the value-lie demo, golden vectors. |
 | `test/residency.test.ts` | Set membership (FL/RI discount over a hidden state) and ZIP-inside-a-state, with the claimed-state-lie demo. |
+| `test/revocation.test.ts` | Accumulator non-revocation, witness updates, stale/revoked/forged negatives, response binding, and golden vectors. |
 
 ## The flow this enables
 
@@ -30,6 +34,7 @@ const signature = blindSign(suite, sk, pk, commitmentWithProof, header,
 
 // Presentation: any subset of credentials, tied together by the hidden secret,
 // with an age proof over the hidden dob.
+// credentialA carries currentWitness at message-space slot 4 in accumulatorWitnesses.
 const spec = {
   equalities: [[{ statement: 0, messageIndex: 3 },   // A's committed link secret…
                 { statement: 1, messageIndex: 1 }]],  // …equals B's, without revealing it
@@ -38,6 +43,10 @@ const spec = {
                  digits: 4, params: verifierRangeParams }],
   memberships: [{ statement: 0, messageIndex: 2,      // A's hidden state FIPS code…
                   params: coastalStateParams }],       // …is FL or RI, without saying which
+  accumulatorMemberships: [{ statement: 0, messageIndex: 4,
+                              params: registryParams,
+                              accumulator: currentRegistryValue,
+                              epoch: currentEpoch }],   // hidden revocation id is still a member
 };
 const presentation = provePresentation(suite, [credentialA, credentialB], spec, presentationHeader);
 const ok = verifyPresentation(suite, presentation, descriptors, spec, presentationHeader);
@@ -64,6 +73,12 @@ interface. The prover-blind slot is internal and unreachable.
   (byte) messages. Range claims are modular arithmetic — encode honest values well below r
   (< 2^64) or the >=/<= reading doesn't hold. Bounds are inclusive; `base^digits <= 2^64` is
   enforced. Membership params bind the member list AND its order.
+- **Non-revocation is an accumulator membership bound to a credential.** The referenced hidden
+  numeric message is the issuer-assigned revocation id, and the corresponding current witness is
+  supplied in `CredentialStatement.accumulatorWitnesses`. The verifier supplies the registry
+  public key, accumulator value, and epoch; none are accepted from the proof. The accumulator
+  proof omits the id response and reuses the BBS response for that slot, so it cannot authenticate
+  anything without the credential statement it gates.
 - **Fail closed.** `verifyPresentation` returns `false` on any malformed input; the octet
   parsers throw.
 
@@ -75,9 +90,8 @@ non-interop. Need a spec BBS proof? Use `blindProofGen` from `@credkit/bbs` dire
 
 A change to the transcript layout, the wire format, or `PROTOCOL_ID` breaks every stored
 presentation: the golden-vector tests will fail, and that failure means "bump the protocol
-version and migrate", not "update the hex". (V1 → V2 → V3 were exactly that: range
-predicates, then set-membership predicates, joined the transcript and the wire format.
-Neither predecessor shipped, but the rule held anyway.)
+version and migrate", not "update the hex". V1 → V2 → V3 → V4 followed that rule as range,
+set-membership, and then accumulator-membership predicates joined the transcript and wire format.
 
 ## Running
 

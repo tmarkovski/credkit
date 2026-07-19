@@ -2,24 +2,26 @@
 <html lang="en" class="Internet-Draft">
 <head>
 <meta charset="utf-8">
-<meta content="Common,Latin" name="scripts">
+<meta content="Common,Greek,Latin" name="scripts">
 <meta content="initial-scale=1.0" name="viewport">
-<title>credkit: Composite BBS Presentations with Predicates over Hidden Messages</title>
+<title>credkit: Composite BBS Presentations with Hidden-Message Predicates and Revocation</title>
 <meta content="Tomislav Markovski" name="author">
 <meta content='
        This document describes credkit, an experimental construction that composes multiple
 IETF BBS proofs of knowledge under a single merged Fiat-Shamir challenge, and adds
-zero-knowledge predicates — set membership and range — over signed messages that are never
-disclosed. It is written in the style of, and layered directly on top of, the CFRG BBS
+zero-knowledge predicates — set membership, range, and accumulator membership for
+non-revocation — over signed messages that are never disclosed. It is written in the style of,
+and layered directly on top of, the CFRG BBS
 Signatures and Blind BBS Signatures drafts, and it is motivated by the W3C Verifiable
 Credentials Data Model and the  bbs-2023  Data Integrity cryptosuite. Its purpose is to record,
 for readers already fluent in those specifications, exactly where credkit reuses them, where it
 diverges, and how the pieces that neither specification provides — cross-credential witness
-equality (a "link secret"), set-membership predicates, and range predicates bound to a signed
-value — are constructed and made sound. 
+equality (a "link secret"), set-membership and range predicates bound to signed values, and a
+privacy-preserving revocation gate bound to a hidden credential identifier — are constructed and
+made sound.
        This is a description of an experiment, not a standards-track proposal. It defines no new
 registry, claims no interoperability, and has no formal standing. It exists so the design can be
-reviewed as a design rather than as source code. 
+reviewed as a design rather than as source code.
     ' name="description">
 <meta content="xml2rfc 3.34.0" name="generator">
 <meta content="BBS" name="keyword">
@@ -28,6 +30,7 @@ reviewed as a design rather than as source code.
 <meta content="selective disclosure" name="keyword">
 <meta content="range proofs" name="keyword">
 <meta content="set membership" name="keyword">
+<meta content="revocation" name="keyword">
 <meta content="unlinkability" name="keyword">
 <meta content="draft-markovski-credkit-composite-proofs-latest" name="ietf.draft">
 <!-- Generator version information:
@@ -247,7 +250,7 @@ dl > dt {
   float: left;
   margin-right: 1em;
 }
-/* 
+/*
 dl.nohang > dt {
   float: none;
 }
@@ -1238,7 +1241,7 @@ li > p:last-of-type:only-child {
 </tr></thead>
 <tfoot><tr>
 <td class="left">Markovski</td>
-<td class="center">Expires 17 January 2027</td>
+<td class="center">Expires 20 January 2027</td>
 <td class="right">[Page]</td>
 </tr></tfoot>
 </table>
@@ -1251,12 +1254,12 @@ li > p:last-of-type:only-child {
 <dd class="internet-draft">draft-markovski-credkit-composite-proofs-latest</dd>
 <dt class="label-published">Published:</dt>
 <dd class="published">
-<time datetime="2026-07-16" class="published">16 July 2026</time>
+<time datetime="2026-07-19" class="published">19 July 2026</time>
     </dd>
 <dt class="label-intended-status">Intended Status:</dt>
 <dd class="intended-status">Informational</dd>
 <dt class="label-expires">Expires:</dt>
-<dd class="expires"><time datetime="2027-01-17">17 January 2027</time></dd>
+<dd class="expires"><time datetime="2027-01-20">20 January 2027</time></dd>
 <dt class="label-authors">Author:</dt>
 <dd class="authors">
 <div class="author">
@@ -1266,19 +1269,21 @@ li > p:last-of-type:only-child {
 </dd>
 </dl>
 </div>
-<h1 id="title">credkit: Composite BBS Presentations with Predicates over Hidden Messages</h1>
+<h1 id="title">credkit: Composite BBS Presentations with Hidden-Message Predicates and Revocation</h1>
 <section id="section-abstract">
       <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
 <p id="section-abstract-1">This document describes credkit, an experimental construction that composes multiple
 IETF BBS proofs of knowledge under a single merged Fiat-Shamir challenge, and adds
-zero-knowledge predicates — set membership and range — over signed messages that are never
-disclosed. It is written in the style of, and layered directly on top of, the CFRG BBS
+zero-knowledge predicates — set membership, range, and accumulator membership for
+non-revocation — over signed messages that are never disclosed. It is written in the style of,
+and layered directly on top of, the CFRG BBS
 Signatures and Blind BBS Signatures drafts, and it is motivated by the W3C Verifiable
 Credentials Data Model and the <code>bbs-2023</code> Data Integrity cryptosuite. Its purpose is to record,
 for readers already fluent in those specifications, exactly where credkit reuses them, where it
 diverges, and how the pieces that neither specification provides — cross-credential witness
-equality (a "link secret"), set-membership predicates, and range predicates bound to a signed
-value — are constructed and made sound.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+equality (a "link secret"), set-membership and range predicates bound to signed values, and a
+privacy-preserving revocation gate bound to a hidden credential identifier — are constructed and
+made sound.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
 <p id="section-abstract-2">This is a description of an experiment, not a standards-track proposal. It defines no new
 registry, claims no interoperability, and has no formal standing. It exists so the design can be
 reviewed as a design rather than as source code.<a href="#section-abstract-2" class="pilcrow">¶</a></p>
@@ -1302,7 +1307,7 @@ reviewed as a design rather than as source code.<a href="#section-abstract-2" cl
         time. It is inappropriate to use Internet-Drafts as reference
         material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
 <p id="section-boilerplate.1-4">
-        This Internet-Draft will expire on 17 January 2027.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+        This Internet-Draft will expire on 20 January 2027.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="copyright">
@@ -1349,7 +1354,7 @@ reviewed as a design rather than as source code.<a href="#section-abstract-2" cl
             <p id="section-toc.1-1.2.1"><a href="#section-2" class="auto internal xref">2</a>.  <a href="#name-architecture-overview" class="internal xref">Architecture overview</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2.2.1">
-                <p id="section-toc.1-1.2.2.1.1"><a href="#section-2.1" class="auto internal xref">2.1</a>.  <a href="#name-four-properties-one-constru" class="internal xref">Four properties, one construction</a></p>
+                <p id="section-toc.1-1.2.2.1.1"><a href="#section-2.1" class="auto internal xref">2.1</a>.  <a href="#name-five-properties-one-constru" class="internal xref">Five properties, one construction</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2.2.2">
                 <p id="section-toc.1-1.2.2.2.1"><a href="#section-2.2" class="auto internal xref">2.2</a>.  <a href="#name-layering" class="internal xref">Layering</a></p>
@@ -1433,87 +1438,125 @@ reviewed as a design rather than as source code.<a href="#section-abstract-2" cl
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7">
-            <p id="section-toc.1-1.7.1"><a href="#section-7" class="auto internal xref">7</a>.  <a href="#name-wire-formats" class="internal xref">Wire formats</a></p>
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="auto internal xref">7</a>.  <a href="#name-accumulator-non-revocation" class="internal xref">Accumulator non-revocation</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.1">
-                <p id="section-toc.1-1.7.2.1.1"><a href="#section-7.1" class="auto internal xref">7.1</a>.  <a href="#name-range-parameters" class="internal xref">Range parameters</a></p>
+                <p id="section-toc.1-1.7.2.1.1"><a href="#section-7.1" class="auto internal xref">7.1</a>.  <a href="#name-registry-setup-and-addition" class="internal xref">Registry setup and additions-static issuance</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.2">
-                <p id="section-toc.1-1.7.2.2.1"><a href="#section-7.2" class="auto internal xref">7.2</a>.  <a href="#name-set-membership-parameters" class="internal xref">Set-membership parameters</a></p>
+                <p id="section-toc.1-1.7.2.2.1"><a href="#section-7.2" class="auto internal xref">7.2</a>.  <a href="#name-deletion-only-epochs-and-ho" class="internal xref">Deletion-only epochs and holder updates</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.3">
-                <p id="section-toc.1-1.7.2.3.1"><a href="#section-7.3" class="auto internal xref">7.3</a>.  <a href="#name-range-proof" class="internal xref">Range proof</a></p>
+                <p id="section-toc.1-1.7.2.3.1"><a href="#section-7.3" class="auto internal xref">7.3</a>.  <a href="#name-cdh-membership-proof-and-bb" class="internal xref">CDH membership proof and BBS binding</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.4">
-                <p id="section-toc.1-1.7.2.4.1"><a href="#section-7.4" class="auto internal xref">7.4</a>.  <a href="#name-set-membership-proof" class="internal xref">Set-membership proof</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.5">
-                <p id="section-toc.1-1.7.2.5.1"><a href="#section-7.5" class="auto internal xref">7.5</a>.  <a href="#name-presentation" class="internal xref">Presentation</a></p>
+                <p id="section-toc.1-1.7.2.4.1"><a href="#section-7.4" class="auto internal xref">7.4</a>.  <a href="#name-verifier-stated-freshness" class="internal xref">Verifier-stated freshness</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8">
-            <p id="section-toc.1-1.8.1"><a href="#section-8" class="auto internal xref">8</a>.  <a href="#name-security-considerations" class="internal xref">Security considerations</a></p>
+            <p id="section-toc.1-1.8.1"><a href="#section-8" class="auto internal xref">8</a>.  <a href="#name-wire-formats" class="internal xref">Wire formats</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.1">
-                <p id="section-toc.1-1.8.2.1.1"><a href="#section-8.1" class="auto internal xref">8.1</a>.  <a href="#name-soundness-rests-on-one-chal" class="internal xref">Soundness rests on one challenge</a></p>
+                <p id="section-toc.1-1.8.2.1.1"><a href="#section-8.1" class="auto internal xref">8.1</a>.  <a href="#name-range-parameters" class="internal xref">Range parameters</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2">
-                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-ul-264-is-a-soundness-bound" class="internal xref"><code>u^L &lt;= 2^64</code> is a soundness bound, not a limit</a></p>
+                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-set-membership-parameters" class="internal xref">Set-membership parameters</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3">
-                <p id="section-toc.1-1.8.2.3.1"><a href="#section-8.3" class="auto internal xref">8.3</a>.  <a href="#name-identity-v-must-be-rejected" class="internal xref">Identity <code>V</code> must be rejected</a></p>
+                <p id="section-toc.1-1.8.2.3.1"><a href="#section-8.3" class="auto internal xref">8.3</a>.  <a href="#name-range-proof" class="internal xref">Range proof</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.4">
-                <p id="section-toc.1-1.8.2.4.1"><a href="#section-8.4" class="auto internal xref">8.4</a>.  <a href="#name-shared-alphabet-randomness-" class="internal xref">Shared alphabet randomness is brute-forceable</a></p>
+                <p id="section-toc.1-1.8.2.4.1"><a href="#section-8.4" class="auto internal xref">8.4</a>.  <a href="#name-set-membership-proof" class="internal xref">Set-membership proof</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.5">
-                <p id="section-toc.1-1.8.2.5.1"><a href="#section-8.5" class="auto internal xref">8.5</a>.  <a href="#name-modular-predicate-semantics" class="internal xref">Modular predicate semantics</a></p>
+                <p id="section-toc.1-1.8.2.5.1"><a href="#section-8.5" class="auto internal xref">8.5</a>.  <a href="#name-accumulator-parameters" class="internal xref">Accumulator parameters</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.6">
-                <p id="section-toc.1-1.8.2.6.1"><a href="#section-8.6" class="auto internal xref">8.6</a>.  <a href="#name-trusted-setup-and-u-sdh" class="internal xref">Trusted setup and <code>u</code>-SDH</a></p>
+                <p id="section-toc.1-1.8.2.6.1"><a href="#section-8.6" class="auto internal xref">8.6</a>.  <a href="#name-registry-update" class="internal xref">Registry update</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.7">
-                <p id="section-toc.1-1.8.2.7.1"><a href="#section-8.7" class="auto internal xref">8.7</a>.  <a href="#name-per-prover-alphabets-are-a-" class="internal xref">Per-prover alphabets are a linkability trap</a></p>
+                <p id="section-toc.1-1.8.2.7.1"><a href="#section-8.7" class="auto internal xref">8.7</a>.  <a href="#name-accumulator-membership-proo" class="internal xref">Accumulator-membership proof</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.8">
-                <p id="section-toc.1-1.8.2.8.1"><a href="#section-8.8" class="auto internal xref">8.8</a>.  <a href="#name-transcript-order-binding" class="internal xref">Transcript order binding</a></p>
-</li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.9">
-                <p id="section-toc.1-1.8.2.9.1"><a href="#section-8.9" class="auto internal xref">8.9</a>.  <a href="#name-fail-closed-verification" class="internal xref">Fail-closed verification</a></p>
+                <p id="section-toc.1-1.8.2.8.1"><a href="#section-8.8" class="auto internal xref">8.8</a>.  <a href="#name-presentation" class="internal xref">Presentation</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9">
-            <p id="section-toc.1-1.9.1"><a href="#section-9" class="auto internal xref">9</a>.  <a href="#name-privacy-considerations" class="internal xref">Privacy considerations</a></p>
+            <p id="section-toc.1-1.9.1"><a href="#section-9" class="auto internal xref">9</a>.  <a href="#name-security-considerations" class="internal xref">Security considerations</a></p>
 <ul class="compact toc ulBare ulEmpty">
 <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.1">
-                <p id="section-toc.1-1.9.2.1.1"><a href="#section-9.1" class="auto internal xref">9.1</a>.  <a href="#name-verifier-unlinkability-is-p" class="internal xref">Verifier unlinkability is preserved by omission</a></p>
+                <p id="section-toc.1-1.9.2.1.1"><a href="#section-9.1" class="auto internal xref">9.1</a>.  <a href="#name-soundness-rests-on-one-chal" class="internal xref">Soundness rests on one challenge</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.2">
-                <p id="section-toc.1-1.9.2.2.1"><a href="#section-9.2" class="auto internal xref">9.2</a>.  <a href="#name-what-a-predicate-reveals" class="internal xref">What a predicate reveals</a></p>
+                <p id="section-toc.1-1.9.2.2.1"><a href="#section-9.2" class="auto internal xref">9.2</a>.  <a href="#name-ul-264-is-a-soundness-bound" class="internal xref"><code>u^L &lt;= 2^64</code> is a soundness bound, not a limit</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.3">
+                <p id="section-toc.1-1.9.2.3.1"><a href="#section-9.3" class="auto internal xref">9.3</a>.  <a href="#name-identity-v-must-be-rejected" class="internal xref">Identity <code>V</code> must be rejected</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.4">
+                <p id="section-toc.1-1.9.2.4.1"><a href="#section-9.4" class="auto internal xref">9.4</a>.  <a href="#name-shared-alphabet-randomness-" class="internal xref">Shared alphabet randomness is brute-forceable</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.5">
+                <p id="section-toc.1-1.9.2.5.1"><a href="#section-9.5" class="auto internal xref">9.5</a>.  <a href="#name-accumulator-proofs-require-" class="internal xref">Accumulator proofs require a credential binding</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.6">
+                <p id="section-toc.1-1.9.2.6.1"><a href="#section-9.6" class="auto internal xref">9.6</a>.  <a href="#name-positive-only-deletion-only" class="internal xref">Positive-only, deletion-only registry</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.7">
+                <p id="section-toc.1-1.9.2.7.1"><a href="#section-9.7" class="auto internal xref">9.7</a>.  <a href="#name-registry-freshness-is-verif" class="internal xref">Registry freshness is verifier policy</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.8">
+                <p id="section-toc.1-1.9.2.8.1"><a href="#section-9.8" class="auto internal xref">9.8</a>.  <a href="#name-modular-predicate-semantics" class="internal xref">Modular predicate semantics</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.9">
+                <p id="section-toc.1-1.9.2.9.1"><a href="#section-9.9" class="auto internal xref">9.9</a>.  <a href="#name-trusted-setup-and-u-sdh" class="internal xref">Trusted setup and <code>u</code>-SDH</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.10">
+                <p id="section-toc.1-1.9.2.10.1"><a href="#section-9.10" class="auto internal xref">9.10</a>. <a href="#name-per-prover-alphabets-are-a-" class="internal xref">Per-prover alphabets are a linkability trap</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.11">
+                <p id="section-toc.1-1.9.2.11.1"><a href="#section-9.11" class="auto internal xref">9.11</a>. <a href="#name-transcript-order-binding" class="internal xref">Transcript order binding</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.12">
+                <p id="section-toc.1-1.9.2.12.1"><a href="#section-9.12" class="auto internal xref">9.12</a>. <a href="#name-fail-closed-verification" class="internal xref">Fail-closed verification</a></p>
 </li>
             </ul>
 </li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10">
-            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-the-cryptosuite-layer" class="internal xref">The cryptosuite layer</a></p>
-</li>
-          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
-            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-iana-considerations" class="internal xref">IANA considerations</a></p>
-</li>
-          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
-            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-references" class="internal xref">References</a></p>
+            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-privacy-considerations" class="internal xref">Privacy considerations</a></p>
 <ul class="compact toc ulBare ulEmpty">
-<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.1">
-                <p id="section-toc.1-1.12.2.1.1"><a href="#section-12.1" class="auto internal xref">12.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.1">
+                <p id="section-toc.1-1.10.2.1.1"><a href="#section-10.1" class="auto internal xref">10.1</a>.  <a href="#name-verifier-unlinkability-is-p" class="internal xref">Verifier unlinkability is preserved by omission</a></p>
 </li>
-              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.2">
-                <p id="section-toc.1-1.12.2.2.1"><a href="#section-12.2" class="auto internal xref">12.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.2">
+                <p id="section-toc.1-1.10.2.2.1"><a href="#section-10.2" class="auto internal xref">10.2</a>.  <a href="#name-what-a-predicate-reveals" class="internal xref">What a predicate reveals</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.3">
+                <p id="section-toc.1-1.10.2.3.1"><a href="#section-10.3" class="auto internal xref">10.3</a>.  <a href="#name-revocation-update-privacy" class="internal xref">Revocation update privacy</a></p>
 </li>
             </ul>
 </li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
+            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-the-cryptosuite-layer" class="internal xref">The cryptosuite layer</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
+            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-iana-considerations" class="internal xref">IANA considerations</a></p>
+</li>
           <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13">
-            <p id="section-toc.1-1.13.1"><a href="#appendix-A" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
+            <p id="section-toc.1-1.13.1"><a href="#section-13" class="auto internal xref">13</a>. <a href="#name-references" class="internal xref">References</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.1">
+                <p id="section-toc.1-1.13.2.1.1"><a href="#section-13.1" class="auto internal xref">13.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.2">
+                <p id="section-toc.1-1.13.2.2.1"><a href="#section-13.2" class="auto internal xref">13.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14">
+            <p id="section-toc.1-1.14.1"><a href="#appendix-A" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
 </li>
         </ul>
 </nav>
@@ -1544,7 +1587,7 @@ a fresh per-presentation commitment (as in Blind BBS COMMIT mode, or AnonCreds' 
 does not correlate. This is one deployment's approach — the concrete failure credkit started
 from — not a claim about how the field at large builds predicates.<a href="#section-1-2" class="pilcrow">¶</a></p>
 <p id="section-1-3">credkit is an attempt to close that gap without a disclosed commitment and without a SNARK. It
-keeps the IETF BBS wire format and ciphersuites unchanged at the bottom, and builds two layers
+keeps the IETF BBS wire format and ciphersuites unchanged at the bottom, and builds three layers
 on top:<a href="#section-1-3" class="pilcrow">¶</a></p>
 <ul class="normal">
 <li class="normal" id="section-1-4.1">
@@ -1559,11 +1602,17 @@ Chaabouni, and shelat <span>[<a href="#CCS08" class="cite xref">CCS08</a>]</span
 a disclosed commitment but through a linear relation between response scalars that holds only
 under the shared challenge. The value stays hidden; only the predicate's truth is revealed.<a href="#section-1-4.2.1" class="pilcrow">¶</a></p>
 </li>
+        <li class="normal" id="section-1-4.3">
+          <p id="section-1-4.3.1">An <strong>accumulator revocation layer</strong> using a positive VB bilinear accumulator <span>[<a href="#VB20" class="cite xref">VB20</a>]</span>, operated
+additions-static with deletion-only public updates. Its CDH membership proof shares the hidden
+revocation id's BBS response, so the Verifier learns that the signed credential remains in the
+accepted registry state without learning the id.<a href="#section-1-4.3.1" class="pilcrow">¶</a></p>
+</li>
       </ul>
 <p id="section-1-5">A JSON-LD cryptosuite that packages these presentations into W3C Verifiable Credentials
 <span>[<a href="#VC-DATA-MODEL" class="cite xref">VC-DATA-MODEL</a>]</span> in the manner of <code>bbs-2023</code>, together with a second cryptosuite that carries N
 of them under one challenge in a Verifiable Presentation, is implemented and summarized in
-<a href="#the-cryptosuite-layer" class="auto internal xref">Section 10</a>; the suite's full specification is out of scope here.<a href="#section-1-5" class="pilcrow">¶</a></p>
+<a href="#the-cryptosuite-layer" class="auto internal xref">Section 11</a>; the suite's full specification is out of scope here.<a href="#section-1-5" class="pilcrow">¶</a></p>
 <div id="what-this-document-is-and-is-not">
 <section id="section-1.1">
         <h3 id="name-what-this-document-is-and-i">
@@ -1622,8 +1671,12 @@ privacy, not imposing a conformance requirement on anyone.<a href="#section-1.1-
               <td class="text-left" rowspan="1" colspan="1">New; described here. Neither IETF draft has an equivalent.</td>
             </tr>
             <tr>
+              <td class="text-left" rowspan="1" colspan="1">Accumulator revocation</td>
+              <td class="text-left" rowspan="1" colspan="1">A credkit composition of the positive VB accumulator <span>[<a href="#VB20" class="cite xref">VB20</a>]</span>, an additions-static registry operation <span>[<a href="#KB21" class="cite xref">KB21</a>]</span>, deletion-only public updates, and a CDH weak-BB membership proof bound to a BBS message.</td>
+            </tr>
+            <tr>
               <td class="text-left" rowspan="1" colspan="1">JSON-LD cryptosuite</td>
-              <td class="text-left" rowspan="1" colspan="1">Built for single credentials; motivated by <code>bbs-2023</code> <span>[<a href="#DI-BBS" class="cite xref">DI-BBS</a>]</span>. Summarized in <a href="#the-cryptosuite-layer" class="auto internal xref">Section 10</a>, not fully specified here.</td>
+              <td class="text-left" rowspan="1" colspan="1">Built for single- and multi-credential presentations; motivated by <code>bbs-2023</code> <span>[<a href="#DI-BBS" class="cite xref">DI-BBS</a>]</span>. Summarized in <a href="#the-cryptosuite-layer" class="auto internal xref">Section 11</a>, not fully specified here.</td>
             </tr>
           </tbody>
         </table>
@@ -1675,8 +1728,9 @@ any equality constraints and predicates over their hidden messages.<a href="#sec
 </dd>
           <dd class="break"></dd>
 <dt id="section-1.3-2.5">Predicate:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.6">A set-membership or range claim about a single hidden numeric message: that it lies in a signed
-set, or in an interval, without revealing which member or which value.<a href="#section-1.3-2.6" class="pilcrow">¶</a>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.6">A set-membership, range, or accumulator-membership claim about a single hidden numeric message:
+that it lies in a signed set or interval, or remains in an unrevoked registry, without revealing
+which member or which value.<a href="#section-1.3-2.6" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
 <dt id="section-1.3-2.7">Alphabet / signed set:</dt>
@@ -1689,6 +1743,23 @@ membership it is an arbitrary set of distinct scalars.<a href="#section-1.3-2.8"
           <dd style="margin-left: 1.5em" id="section-1.3-2.10">A holder-chosen scalar committed at issuance and signed blindly into multiple credentials, so
 that a later presentation can prove two credentials share it — proving common holdership
 without an identifier.<a href="#section-1.3-2.10" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.3-2.11">Revocation id:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.12">A fresh issuer-assigned scalar signed into one credential as a hidden numeric message. It indexes
+that credential in an accumulator registry but MUST NOT be disclosed or used as a cross-
+credential equality witness.<a href="#section-1.3-2.12" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.3-2.13">Membership witness:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.14">Mutable holder-side state <code>C = (1/(y + alpha)) * V</code> proving that revocation id <code>y</code> belongs to
+accumulator value <code>V</code>. It is kept beside the credential and updated after deletion epochs; it is
+not part of the signed credential or a proof envelope.<a href="#section-1.3-2.14" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.3-2.15">Registry epoch:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.3-2.16">A sequential identifier for one published accumulator value and its deletion update. The
+Verifier states which epoch and accumulator value it accepts.<a href="#section-1.3-2.16" class="pilcrow">¶</a>
 </dd>
         <dd class="break"></dd>
 </dl>
@@ -1742,12 +1813,12 @@ BBS drafts: <code>G1</code> compressed to 48 octets, <code>G2</code> compressed 
       <h2 id="name-architecture-overview">
 <a href="#section-2" class="section-number selfRef">2. </a><a href="#name-architecture-overview" class="section-name selfRef">Architecture overview</a>
       </h2>
-<div id="four-properties-one-construction">
+<div id="five-properties-one-construction">
 <section id="section-2.1">
-        <h3 id="name-four-properties-one-constru">
-<a href="#section-2.1" class="section-number selfRef">2.1. </a><a href="#name-four-properties-one-constru" class="section-name selfRef">Four properties, one construction</a>
+        <h3 id="name-five-properties-one-constru">
+<a href="#section-2.1" class="section-number selfRef">2.1. </a><a href="#name-five-properties-one-constru" class="section-name selfRef">Five properties, one construction</a>
         </h3>
-<p id="section-2.1-1">credkit exists because four privacy properties that are usually treated as separate features are,
+<p id="section-2.1-1">credkit exists because five privacy properties that are usually treated as separate features are,
 with BBS plus blind issuance, a single construction:<a href="#section-2.1-1" class="pilcrow">¶</a></p>
 <ul class="compact">
 <li class="compact" id="section-2.1-2.1">
@@ -1768,9 +1839,14 @@ holdership and nothing else.<a href="#section-2.1-2.3" class="pilcrow">¶</a>
             <strong>Predicates</strong> are the same shared-blinding idea pointed at a Boneh-Boyen-signed alphabet
 rather than a second credential.<a href="#section-2.1-2.4" class="pilcrow">¶</a>
 </li>
+          <li class="compact" id="section-2.1-2.5">
+            <strong>Private non-revocation</strong> points that shared blinding at a positive accumulator membership
+proof. The Verifier learns that a hidden signed revocation id remains in the accepted registry
+state, never the id itself.<a href="#section-2.1-2.5" class="pilcrow">¶</a>
+</li>
         </ul>
-<p id="section-2.1-3">The load-bearing observation is that all three of the non-trivial properties reduce to <em>sharing
-a Schnorr blinding under one Fiat-Shamir challenge</em>. The merged transcript of
+<p id="section-2.1-3">The load-bearing observation is that credential linkage, predicates, and private non-revocation
+all reduce to <em>sharing a Schnorr blinding under one Fiat-Shamir challenge</em>. The merged transcript of
 <a href="#the-merged-fiat-shamir-transcript" class="auto internal xref">Section 4</a> is the single mechanism that makes each of them sound, and
 using more than one challenge breaks all of them in the same way (see <a href="#one-challenge" class="auto internal xref">Section 4.5</a>).<a href="#section-2.1-3" class="pilcrow">¶</a></p>
 </section>
@@ -1787,21 +1863,21 @@ using more than one challenge breaks all of them in the same way (see <a href="#
   |  Composite presentations                                    |
   |    - merged Fiat-Shamir transcript                          |
   |    - witness equality (link secret)                         |
-  |    - predicate binding                                      |
-  +----------------------------+--------------------------------+
-  |  BBS core + blind issuance |  CCS predicates (BB alphabet)  |
-  |  (IETF, unchanged, minus   |    - set membership            |
-  |   COMMIT mode; numeric     |    - range via digits          |
-  |   messages added)          |                                |
-  +----------------------------+--------------------------------+
+  |    - predicate + accumulator binding                        |
+  +-----------------------+------------------+------------------+
+  | BBS core + blind      | CCS predicates   | VB accumulator   |
+  | issuance (IETF, minus | (BB alphabet)    | - static joins   |
+  | COMMIT; numeric       | - membership     | - delete epochs  |
+  | messages added)       | - range          | - CDH proof      |
+  +-----------------------+------------------+------------------+
   |  BLS12-381 pairing (@noble/curves); no WASM, no SNARK       |
   +-------------------------------------------------------------+
 </pre><a href="#section-2.2-1" class="pilcrow">¶</a>
 </div>
-<p id="section-2.2-2">The predicate layer and the BBS layer share exactly one thing: response scalars in the field of
-order <code>r</code>. They never share group elements, so no independence assumption ties the two generator
-families. This is why the predicate proofs can compose with BBS proofs by an algebraic relation
-between responses rather than through a shared commitment.<a href="#section-2.2-2" class="pilcrow">¶</a></p>
+<p id="section-2.2-2">The predicate and accumulator layers share exactly one thing with the BBS layer: response scalars
+in the field of order <code>r</code>. They do not share group elements. This is why their proofs compose with
+BBS proofs by an algebraic relation between responses rather than through a stable disclosed
+commitment.<a href="#section-2.2-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -1837,7 +1913,7 @@ integer in <code>[0, r)</code>, in which case it <strong>is</strong> its own sca
 to the signing path. Bytes messages are unaffected and continue to reproduce the BBS vectors.
 The consequences for predicate semantics — that predicates are modular, and that honest values
 must be encoded well below <code>r</code> for the natural comparison to hold — are discussed in
-<a href="#modular-predicate-semantics" class="auto internal xref">Section 8.5</a>. A predicate MUST reference a message that was signed as an
+<a href="#modular-predicate-semantics" class="auto internal xref">Section 9.8</a>. A predicate MUST reference a message that was signed as an
 integer; a predicate pointed at a hash-mapped (bytes) message is rejected by the Prover, and
 could not accidentally verify in any case (the hash would have to land in a <code>~2^-239</code> window).<a href="#section-3.1-3" class="pilcrow">¶</a></p>
 </section>
@@ -1941,7 +2017,7 @@ entries can produce the same octet stream. Labels MUST be non-empty. The typed h
         </ul>
 <p id="section-4.1-5">At construction the transcript first absorbs <code>("protocol", PROTOCOL_ID)</code> and
 <code>("ciphersuite", ciphersuite_id)</code>, binding every challenge to the protocol version and the
-ciphersuite. <code>PROTOCOL_ID</code> for this revision is the ASCII string <code>CREDKIT-PROOFS-V3</code>.<a href="#section-4.1-5" class="pilcrow">¶</a></p>
+ciphersuite. <code>PROTOCOL_ID</code> for this revision is the ASCII string <code>CREDKIT-PROOFS-V4</code>.<a href="#section-4.1-5" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="layout">
@@ -1949,11 +2025,12 @@ ciphersuite. <code>PROTOCOL_ID</code> for this revision is the ASCII string <cod
         <h3 id="name-layout">
 <a href="#section-4.2" class="section-number selfRef">4.2. </a><a href="#name-layout" class="section-name selfRef">Layout</a>
         </h3>
-<p id="section-4.2-1">A presentation over N statements, with E equality constraints, K range predicates, and M
-set-membership predicates, absorbs the following sequence. Prover and Verifier MUST absorb it
-identically; the entire layout is one function used by both sides.<a href="#section-4.2-1" class="pilcrow">¶</a></p>
+<p id="section-4.2-1">A presentation over N statements, with E equality constraints, K range predicates, M
+set-membership predicates, and A accumulator-membership predicates, absorbs the following
+sequence. Prover and Verifier MUST absorb it identically; the entire layout is one function used
+by both sides.<a href="#section-4.2-1" class="pilcrow">¶</a></p>
 <div class="alignLeft art-text artwork" id="section-4.2-2">
-<pre>("protocol", "CREDKIT-PROOFS-V3")
+<pre>("protocol", "CREDKIT-PROOFS-V4")
 ("ciphersuite", ciphersuite_id)
 ("presentation_header", presentation_header)
 ("statement_count", N)
@@ -1995,6 +2072,17 @@ for k in 0..M-1:
     ("membership_params", setParamsToOctets(m_k.params))
     ("V", V_k)   # G1, blinded signature on the hidden member
     ("R", R_k)   # GT, sigma commitment
+("accumulator_membership_count", A)
+for k in 0..A-1:
+    ("accumulator_membership", k)
+    ("accumulator_statement", a_k.statement)
+    ("accumulator_message_index", a_k.messageIndex)
+    ("accumulator_params", accumulatorParamsToOctets(a_k.params))
+    ("accumulator_value", a_k.accumulator)  # G1
+    ("accumulator_epoch", a_k.epoch)
+    ("CPrime", CPrime_k)                    # randomized witness, G1
+    ("CBar", CBar_k)                        # alpha relation, G1
+    ("T", T_k)                              # sigma commitment, G1
 </pre><a href="#section-4.2-2" class="pilcrow">¶</a>
 </div>
 <p id="section-4.2-3">Every field a Verifier must agree on is absorbed, including the full serialized predicate
@@ -2002,9 +2090,10 @@ parameters and the predicate ordering. Ordering is therefore significant: the Pr
 Verifier MUST supply the same statements, constraints, and predicates in the same order. This is
 deliberate — canonicalizing the order inside the library would silently paper over a
 Prover/Verifier disagreement instead of failing it.<a href="#section-4.2-3" class="pilcrow">¶</a></p>
-<p id="section-4.2-4">Even an empty predicate section absorbs its count (<code>("range_predicate_count", 0)</code> and
-<code>("set_membership_count", 0)</code>), so that adding predicates to a presentation cannot collide with a
-predicate-free presentation over the same statements.<a href="#section-4.2-4" class="pilcrow">¶</a></p>
+<p id="section-4.2-4">Even an empty predicate section absorbs its count (<code>("range_predicate_count", 0)</code>,
+<code>("set_membership_count", 0)</code>, and <code>("accumulator_membership_count", 0)</code>), so that adding
+predicates to a presentation cannot collide with a predicate-free presentation over the same
+statements.<a href="#section-4.2-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="challenge-derivation">
@@ -2051,10 +2140,11 @@ Sharing a Schnorr blinding for a message <code>m</code> across two proofs that u
 =&gt; m = (m^_1 - m^_2) / (c_1 - c_2)
 </pre><a href="#section-4.5-2" class="pilcrow">¶</a>
 </div>
-<p id="section-4.5-3">Every credkit construction that shares a blinding — witness equality, range binding, membership
-binding — relies on the two responses being taken under the <em>same</em> <code>c</code> so that this subtraction
-yields <code>0</code> and reveals nothing. The reference implementation demonstrates the recovery
-end-to-end as a test, to keep the "one challenge" rule from ever being relaxed.<a href="#section-4.5-3" class="pilcrow">¶</a></p>
+<p id="section-4.5-3">Every credkit construction that shares a blinding — witness equality, range binding, set
+membership binding, and accumulator membership binding — relies on the two responses being taken
+under the <em>same</em> <code>c</code> so that this subtraction yields <code>0</code> and reveals nothing. The reference
+implementation demonstrates the recovery end-to-end as a test, to keep the "one challenge" rule
+from ever being relaxed.<a href="#section-4.5-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -2093,12 +2183,16 @@ target of an equality constraint or a predicate: it is unreachable by constructi
             <code>membershipProofs</code>: one set-membership proof per membership predicate, in spec order;<a href="#section-5.2-2.3" class="pilcrow">¶</a>
 </li>
           <li class="compact" id="section-5.2-2.4">
-            <code>challenge</code>: the single merged challenge.<a href="#section-5.2-2.4" class="pilcrow">¶</a>
+            <code>accumulatorProofs</code>: one accumulator-membership proof per accumulator predicate, in spec order;<a href="#section-5.2-2.4" class="pilcrow">¶</a>
+</li>
+          <li class="compact" id="section-5.2-2.5">
+            <code>challenge</code>: the single merged challenge.<a href="#section-5.2-2.5" class="pilcrow">¶</a>
 </li>
         </ul>
 <p id="section-5.2-3">The Verifier is given the public <code>StatementDescriptor</code> for each statement (public key, header,
 disclosed messages, issuer-known count), the same <code>PresentationSpec</code> (equality constraints and
-predicate list) the Prover used, and the same presentation header.<a href="#section-5.2-3" class="pilcrow">¶</a></p>
+predicate lists) the Prover used, and the same presentation header. Accumulator predicates in
+that spec contain registry state obtained by the Verifier, not accepted from the Prover.<a href="#section-5.2-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="witness-equality-the-link-secret">
@@ -2134,7 +2228,8 @@ share a blinding where independence is required (for example a shared <code>e~</
 <code>e_1 - e_2 = (e^_1 - e^_2)/c</code> across two signatures). The Prover therefore enforces independence
 rather than assuming it: it rejects a presentation in which two statements drew identical
 randomness. Predicate randomness is subject to a stronger, joint check described in
-<a href="#shared-alphabet-randomness" class="auto internal xref">Section 8.4</a>.<a href="#section-5.4-1" class="pilcrow">¶</a></p>
+<a href="#shared-alphabet-randomness" class="auto internal xref">Section 9.4</a>. Accumulator proof randomizers join the same independence pool as
+range and set-membership proof randomizers.<a href="#section-5.4-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -2165,7 +2260,7 @@ outside the intended set only enables proofs it alone would accept, i.e. it only
 consumer importing third-party parameters can validate every signature by checking
 <code>e(A_j, y + G2.BASE * members[j]) == e(G1.BASE, G2.BASE)</code>; this catches a malformed alphabet but,
 by design, cannot catch a Verifier that hands out per-prover alphabets as tracking tags (see
-<a href="#per-prover-alphabets" class="auto internal xref">Section 8.7</a>).<a href="#section-6.1-3" class="pilcrow">¶</a></p>
+<a href="#per-prover-alphabets" class="auto internal xref">Section 9.10</a>).<a href="#section-6.1-3" class="pilcrow">¶</a></p>
 <p id="section-6.1-4">The Boneh-Boyen bases are the curve's standard generators, unrelated to the BBS message
 generators. The only quantity ever shared between a predicate proof and a BBS proof is a response
 scalar, never a group element, so no cross-family independence assumption is needed.<a href="#section-6.1-4" class="pilcrow">¶</a></p>
@@ -2285,266 +2380,497 @@ equality against <code>m^</code> establishes that <code>value</code> is the cred
 </div>
 </section>
 </div>
-<div id="wire-formats">
+<div id="accumulator-non-revocation">
 <section id="section-7">
-      <h2 id="name-wire-formats">
-<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-wire-formats" class="section-name selfRef">Wire formats</a>
+      <h2 id="name-accumulator-non-revocation">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-accumulator-non-revocation" class="section-name selfRef">Accumulator non-revocation</a>
       </h2>
-<p id="section-7-1">All multi-octet lengths are <code>I2OSP(_, 8)</code>. <code>pointLength = 48</code> (<code>G1</code>), <code>scalarLength = 32</code>,
-<code>G2</code> length <code>= 96</code>.<a href="#section-7-1" class="pilcrow">¶</a></p>
-<div id="range-parameters">
+<p id="section-7-1">credkit models a revocation registry as the current set of <strong>unrevoked</strong> credential ids and proves
+positive membership in that set. It uses the positive VB accumulator <span>[<a href="#VB20" class="cite xref">VB20</a>]</span> over BLS12-381,
+operated additions-static as in the KB construction <span>[<a href="#KB21" class="cite xref">KB21</a>]</span>. A revocation id <code>y</code> is a fresh uniform
+scalar assigned by the Issuer and signed into the credential as a hidden numeric message.<a href="#section-7-1" class="pilcrow">¶</a></p>
+<p id="section-7-2">This design deliberately does not use a bitstring status list: disclosing a stable per-credential
+index would undo BBS verifier unlinkability. It also does not implement the VB universal
+accumulator. Non-membership witnesses are unnecessary for an unrevoked-set registry and create
+the trapdoor-recovery surface analyzed in <span>[<a href="#VB-ATTACK" class="cite xref">VB-ATTACK</a>]</span>.<a href="#section-7-2" class="pilcrow">¶</a></p>
+<div id="registry-setup-and-additions-static-issuance">
 <section id="section-7.1">
-        <h3 id="name-range-parameters">
-<a href="#section-7.1" class="section-number selfRef">7.1. </a><a href="#name-range-parameters" class="section-name selfRef">Range parameters</a>
+        <h3 id="name-registry-setup-and-addition">
+<a href="#section-7.1" class="section-number selfRef">7.1. </a><a href="#name-registry-setup-and-addition" class="section-name selfRef">Registry setup and additions-static issuance</a>
         </h3>
-<div class="alignLeft art-text artwork" id="section-7.1-1">
-<pre>range_params := I2OSP(base, 8) || publicKey || A_0 || ... || A_{base-1}
-</pre><a href="#section-7.1-1" class="pilcrow">¶</a>
+<p id="section-7.1-1">The revocation authority samples and retains a nonzero <code>alpha</code> and publishes:<a href="#section-7.1-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.1-2">
+<pre>Qtilde = alpha * G2.BASE
+params = { Qtilde }
+</pre><a href="#section-7.1-2" class="pilcrow">¶</a>
 </div>
-<p id="section-7.1-2"><code>publicKey</code> is the 96-octet <code>G2</code> encoding of <code>y</code>; each <code>A_i</code> is 48 octets. Deserialization
-validates every point and rejects the identity.<a href="#section-7.1-2" class="pilcrow">¶</a></p>
+<p id="section-7.1-3">It initializes the accumulator as <code>V_0 = u_0 * G1.BASE</code> for a fresh nonzero <code>u_0</code>, then discards
+<code>u_0</code>. To enroll a credential with hidden revocation id <code>y</code>, it issues the membership witness:<a href="#section-7.1-3" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.1-4">
+<pre>C = (1 / (y + alpha)) * V
+</pre><a href="#section-7.1-4" class="pilcrow">¶</a>
+</div>
+<p id="section-7.1-5">The negligible-probability case <code>y = -alpha</code> has no inverse and MUST be rejected; the Issuer
+resamples the id.<a href="#section-7.1-5" class="pilcrow">¶</a></p>
+<p id="section-7.1-6">The value <code>V</code> does not change when credentials are issued. There is no public addition record and
+no other holder updates a witness. This makes joins invisible in the public registry history and
+avoids the public batch-addition data attacked in <span>[<a href="#ALLOSAUR" class="cite xref">ALLOSAUR</a>]</span>. Implementations conforming to this
+construction MUST NOT publish or consume addition update data.<a href="#section-7.1-6" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="deletion-only-epochs-and-holder-updates">
+<section id="section-7.2">
+        <h3 id="name-deletion-only-epochs-and-ho">
+<a href="#section-7.2" class="section-number selfRef">7.2. </a><a href="#name-deletion-only-epochs-and-ho" class="section-name selfRef">Deletion-only epochs and holder updates</a>
+        </h3>
+<p id="section-7.2-1">To revoke a non-empty batch <code>D = [y_0, ..., y_{m-1}]</code>, the authority publishes a sequential epoch
+record containing the new accumulator <code>V'</code>, the removed ids, and one <code>G1</code> point per coefficient of
+the VB witness-update polynomial:<a href="#section-7.2-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.2-2">
+<pre>V' = (1 / product_{y_i in D}(y_i + alpha)) * V
+v_D(X) = sum_{s=1}^{m} (
+           (1 / product_{i=1}^{s}(y_i + alpha)) * product_{j=1}^{s-1}(y_j - X)
+         )
+       = sum_{i=0}^{m-1} c_i * X^i
+Omega_i = -c_i * V                 for i in 0..m-1
+update = (epoch, V', D, [Omega_0, ..., Omega_{m-1}])
+</pre><a href="#section-7.2-2" class="pilcrow">¶</a>
+</div>
+<p id="section-7.2-3">The raw coefficients, which depend on the trapdoor, MUST NOT be published. The Ω points and
+removed ids are identical for every holder and can be distributed as static public data. A holder
+applies one or more strictly increasing updates locally with one combined multiscalar
+multiplication and one field inversion. The work is linear in the number of removals, matching the
+non-interactive lower bound of <span>[<a href="#CH09" class="cite xref">CH09</a>]</span>. If an update removes the holder's own <code>y</code>, then
+<code>d_D(y) = product_{y_i in D}(y_i - y) = 0</code>; witness update MUST fail. Otherwise one epoch updates
+the witness as <code>C' = (C + sum_i y^i * Omega_i) / d_D(y)</code>. No witness for the new <code>V'</code> can be
+produced when the denominator is zero; that failure is the revocation operation.<a href="#section-7.2-3" class="pilcrow">¶</a></p>
+<p id="section-7.2-4">The witness is mutable wallet-side state. It MUST NOT be signed into the credential or serialized
+in the presentation envelope. A holder SHOULD verify a witness against an untrusted update feed
+before relying on it:<a href="#section-7.2-4" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.2-5">
+<pre>e(C, Qtilde + y * G2.BASE) == e(V, G2.BASE)
+</pre><a href="#section-7.2-5" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="cdh-membership-proof-and-bbs-binding">
+<section id="section-7.3">
+        <h3 id="name-cdh-membership-proof-and-bb">
+<a href="#section-7.3" class="section-number selfRef">7.3. </a><a href="#name-cdh-membership-proof-and-bb" class="section-name selfRef">CDH membership proof and BBS binding</a>
+        </h3>
+<p id="section-7.3-1">The Prover proves that its hidden signed <code>y</code> has a valid witness for the Verifier-accepted <code>V</code>
+using the CDH weak-BB proof. For fresh nonzero <code>rho</code> and fresh <code>rho~</code>, with <code>y~</code> set to the BBS
+slot's Schnorr blinding:<a href="#section-7.3-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.3-2">
+<pre>CPrime = rho * C
+CBar   = rho * V - y * CPrime       # equals alpha * CPrime for a valid witness
+T      = rho~ * V - y~ * CPrime
+s_rho  = rho~ + c * rho
+</pre><a href="#section-7.3-2" class="pilcrow">¶</a>
+</div>
+<p id="section-7.3-3">The wire proof is <code>(CPrime, CBar, s_rho)</code>. It intentionally omits an element response. The
+Verifier takes <code>s_y = y~ + c * y</code> from the referenced hidden BBS message and checks:<a href="#section-7.3-3" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.3-4">
+<pre>CPrime != identity
+CBar   != identity
+e(CBar, G2.BASE) == e(CPrime, Qtilde)
+T == s_rho * V - s_y * CPrime - c * CBar
+</pre><a href="#section-7.3-4" class="pilcrow">¶</a>
+</div>
+<p id="section-7.3-5">It then absorbs <code>CPrime</code>, <code>CBar</code>, and reconstructed <code>T</code> at the transcript position shown in
+<a href="#layout" class="auto internal xref">Section 4.2</a> and re-derives <code>c</code>. The shared response makes the accumulator proof about the same <code>y</code>
+that the Issuer signed. Supplying any other response proves membership of nothing and fails the
+merged challenge. An accumulator proof is therefore a revocation gate on a BBS credential, never
+a standalone authenticator.<a href="#section-7.3-5" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="verifier-stated-freshness">
+<section id="section-7.4">
+        <h3 id="name-verifier-stated-freshness">
+<a href="#section-7.4" class="section-number selfRef">7.4. </a><a href="#name-verifier-stated-freshness" class="section-name selfRef">Verifier-stated freshness</a>
+        </h3>
+<p id="section-7.4-1">An accumulator predicate names the credential statement and hidden message index, registry public
+parameters, accumulator value, and epoch. The Verifier MUST obtain the parameters, value, and
+epoch through its own trusted registry channel and pass them into verification. These fields are
+absorbed into the transcript. A Prover cannot select a stale or fabricated registry state by
+carrying it in the proof.<a href="#section-7.4-1" class="pilcrow">¶</a></p>
+<p id="section-7.4-2">The maximum tolerated age of a registry epoch is application policy, like status-list caching.
+Accepting a window is permitted, but presenting against an older accepted epoch can reveal the
+holder's last synchronization time. Holders SHOULD update to the newest available accepted epoch
+before presenting.<a href="#section-7.4-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="wire-formats">
+<section id="section-8">
+      <h2 id="name-wire-formats">
+<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-wire-formats" class="section-name selfRef">Wire formats</a>
+      </h2>
+<p id="section-8-1">All multi-octet lengths are <code>I2OSP(_, 8)</code>. <code>pointLength = 48</code> (<code>G1</code>), <code>scalarLength = 32</code>,
+<code>G2</code> length <code>= 96</code>.<a href="#section-8-1" class="pilcrow">¶</a></p>
+<div id="range-parameters">
+<section id="section-8.1">
+        <h3 id="name-range-parameters">
+<a href="#section-8.1" class="section-number selfRef">8.1. </a><a href="#name-range-parameters" class="section-name selfRef">Range parameters</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-8.1-1">
+<pre>range_params := I2OSP(base, 8) || publicKey || A_0 || ... || A_{base-1}
+</pre><a href="#section-8.1-1" class="pilcrow">¶</a>
+</div>
+<p id="section-8.1-2"><code>publicKey</code> is the 96-octet <code>G2</code> encoding of <code>y</code>; each <code>A_i</code> is 48 octets. Deserialization
+validates every point and rejects the identity.<a href="#section-8.1-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="set-membership-parameters">
-<section id="section-7.2">
+<section id="section-8.2">
         <h3 id="name-set-membership-parameters">
-<a href="#section-7.2" class="section-number selfRef">7.2. </a><a href="#name-set-membership-parameters" class="section-name selfRef">Set-membership parameters</a>
+<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-set-membership-parameters" class="section-name selfRef">Set-membership parameters</a>
         </h3>
-<div class="alignLeft art-text artwork" id="section-7.2-1">
+<div class="alignLeft art-text artwork" id="section-8.2-1">
 <pre>set_params := I2OSP(count, 8) || publicKey || ( I2OSP(members[j], 32) || A_j )  for j in 0..count-1
-</pre><a href="#section-7.2-1" class="pilcrow">¶</a>
+</pre><a href="#section-8.2-1" class="pilcrow">¶</a>
 </div>
-<p id="section-7.2-2">Members are distinct scalars in <code>[0, r)</code>, serialized in publication order; the order is part of
-the transcript.<a href="#section-7.2-2" class="pilcrow">¶</a></p>
+<p id="section-8.2-2">Members are distinct scalars in <code>[0, r)</code>, serialized in publication order; the order is part of
+the transcript.<a href="#section-8.2-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="range-proof">
-<section id="section-7.3">
+<section id="section-8.3">
         <h3 id="name-range-proof">
-<a href="#section-7.3" class="section-number selfRef">7.3. </a><a href="#name-range-proof" class="section-name selfRef">Range proof</a>
+<a href="#section-8.3" class="section-number selfRef">8.3. </a><a href="#name-range-proof" class="section-name selfRef">Range proof</a>
         </h3>
-<div class="alignLeft art-text artwork" id="section-7.3-1">
+<div class="alignLeft art-text artwork" id="section-8.3-1">
 <pre>range_proof := I2OSP(L, 8)
             || V_0 || ... || V_{L-1}            # L * 48 octets
             || d^_0 || ... || d^_{L-1}          # L * 32 octets
             || v^_0 || ... || v^_{L-1}          # L * 32 octets
-</pre><a href="#section-7.3-1" class="pilcrow">¶</a>
+</pre><a href="#section-8.3-1" class="pilcrow">¶</a>
 </div>
-<p id="section-7.3-2">Total <code>8 + L * 112</code> octets. Deserialization rejects an identity <code>V_i</code> and any out-of-range
-scalar.<a href="#section-7.3-2" class="pilcrow">¶</a></p>
+<p id="section-8.3-2">Total <code>8 + L * 112</code> octets. Deserialization rejects an identity <code>V_i</code> and any out-of-range
+scalar.<a href="#section-8.3-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="set-membership-proof">
-<section id="section-7.4">
+<section id="section-8.4">
         <h3 id="name-set-membership-proof">
-<a href="#section-7.4" class="section-number selfRef">7.4. </a><a href="#name-set-membership-proof" class="section-name selfRef">Set-membership proof</a>
+<a href="#section-8.4" class="section-number selfRef">8.4. </a><a href="#name-set-membership-proof" class="section-name selfRef">Set-membership proof</a>
         </h3>
-<div class="alignLeft art-text artwork" id="section-7.4-1">
+<div class="alignLeft art-text artwork" id="section-8.4-1">
 <pre>membership_proof := V || response || blindingResponse
-</pre><a href="#section-7.4-1" class="pilcrow">¶</a>
+</pre><a href="#section-8.4-1" class="pilcrow">¶</a>
 </div>
-<p id="section-7.4-2">Fixed 112 octets (<code>48 + 32 + 32</code>). Deserialization rejects an identity <code>V</code>.<a href="#section-7.4-2" class="pilcrow">¶</a></p>
+<p id="section-8.4-2">Fixed 112 octets (<code>48 + 32 + 32</code>). Deserialization rejects an identity <code>V</code>.<a href="#section-8.4-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="accumulator-parameters">
+<section id="section-8.5">
+        <h3 id="name-accumulator-parameters">
+<a href="#section-8.5" class="section-number selfRef">8.5. </a><a href="#name-accumulator-parameters" class="section-name selfRef">Accumulator parameters</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-8.5-1">
+<pre>accumulator_params := Qtilde
+</pre><a href="#section-8.5-1" class="pilcrow">¶</a>
+</div>
+<p id="section-8.5-2"><code>Qtilde</code> is the 96-octet <code>G2</code> encoding of the registry public key. Deserialization validates the
+point and rejects the identity.<a href="#section-8.5-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="registry-update">
+<section id="section-8.6">
+        <h3 id="name-registry-update">
+<a href="#section-8.6" class="section-number selfRef">8.6. </a><a href="#name-registry-update" class="section-name selfRef">Registry update</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-8.6-1">
+<pre>registry_update := I2OSP(epoch, 8) || value || I2OSP(m, 8)
+                || y_0 || ... || y_{m-1}
+                || Omega_0 || ... || Omega_{m-1}
+</pre><a href="#section-8.6-1" class="pilcrow">¶</a>
+</div>
+<p id="section-8.6-2"><code>value</code> and each <code>Omega_i</code> are 48-octet <code>G1</code> encodings; each removed <code>y_i</code> is a 32-octet scalar.
+<code>m</code> MUST be positive. The accumulator value MUST NOT be the identity. An Ω entry MAY be the
+identity because a zero polynomial coefficient is valid.<a href="#section-8.6-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="accumulator-membership-proof">
+<section id="section-8.7">
+        <h3 id="name-accumulator-membership-proo">
+<a href="#section-8.7" class="section-number selfRef">8.7. </a><a href="#name-accumulator-membership-proo" class="section-name selfRef">Accumulator-membership proof</a>
+        </h3>
+<div class="alignLeft art-text artwork" id="section-8.7-1">
+<pre>accumulator_proof := CPrime || CBar || s_rho
+</pre><a href="#section-8.7-1" class="pilcrow">¶</a>
+</div>
+<p id="section-8.7-2">Fixed 128 octets (<code>48 + 48 + 32</code>). Deserialization rejects identity points and out-of-range
+scalars. The element response <code>s_y</code> is intentionally absent; verification obtains it from the
+referenced BBS proof.<a href="#section-8.7-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="presentation">
-<section id="section-7.5">
+<section id="section-8.8">
         <h3 id="name-presentation">
-<a href="#section-7.5" class="section-number selfRef">7.5. </a><a href="#name-presentation" class="section-name selfRef">Presentation</a>
+<a href="#section-8.8" class="section-number selfRef">8.8. </a><a href="#name-presentation" class="section-name selfRef">Presentation</a>
         </h3>
-<p id="section-7.5-1">The presentation carries the shared challenge exactly once, at the end, so a per-proof challenge
+<p id="section-8.8-1">The presentation carries the shared challenge exactly once, at the end, so a per-proof challenge
 mismatch is unrepresentable on the wire. Each BBS proof is serialized without its trailing
-challenge scalar.<a href="#section-7.5-1" class="pilcrow">¶</a></p>
-<div class="alignLeft art-text artwork" id="section-7.5-2">
+challenge scalar.<a href="#section-8.8-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-8.8-2">
 <pre>presentation := I2OSP(N, 8)
      || per statement:   I2OSP(len, 8) || bbs_proof_without_challenge
      || I2OSP(K, 8)
      || per range pred.: I2OSP(len, 8) || range_proof
      || I2OSP(M, 8)
      || per membership:  I2OSP(len, 8) || membership_proof
+     || I2OSP(A, 8)
+     || per accumulator: I2OSP(len, 8) || accumulator_proof
      || challenge        # 32 octets
-</pre><a href="#section-7.5-2" class="pilcrow">¶</a>
+</pre><a href="#section-8.8-2" class="pilcrow">¶</a>
 </div>
-<p id="section-7.5-3">On ingest the challenge is reattached to each BBS-proof body and the fully-validating BBS,
-range, and membership parsers are reused; the recovered challenge is taken from the first BBS
-proof, and verification <a href="#structure" class="auto internal xref">Section 5.2</a> independently re-derives it and compares.<a href="#section-7.5-3" class="pilcrow">¶</a></p>
+<p id="section-8.8-3">On ingest the challenge is reattached to each BBS-proof body and the fully-validating BBS,
+range, membership, and accumulator parsers are reused; the recovered challenge is taken from the
+first BBS proof, and verification <a href="#structure" class="auto internal xref">Section 5.2</a> independently re-derives it and compares.<a href="#section-8.8-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="security-considerations">
-<section id="section-8">
+<section id="section-9">
       <h2 id="name-security-considerations">
-<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-security-considerations" class="section-name selfRef">Security considerations</a>
+<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-security-considerations" class="section-name selfRef">Security considerations</a>
       </h2>
 <div id="soundness-rests-on-one-challenge">
-<section id="section-8.1">
+<section id="section-9.1">
         <h3 id="name-soundness-rests-on-one-chal">
-<a href="#section-8.1" class="section-number selfRef">8.1. </a><a href="#name-soundness-rests-on-one-chal" class="section-name selfRef">Soundness rests on one challenge</a>
+<a href="#section-9.1" class="section-number selfRef">9.1. </a><a href="#name-soundness-rests-on-one-chal" class="section-name selfRef">Soundness rests on one challenge</a>
         </h3>
-<p id="section-8.1-1">As shown in <a href="#one-challenge" class="auto internal xref">Section 4.5</a>, all three shared-blinding constructions become unsound — in fact
+<p id="section-9.1-1">As shown in <a href="#one-challenge" class="auto internal xref">Section 4.5</a>, all shared-blinding constructions become unsound — in fact
 witness-revealing — if composed under more than one challenge. An implementation MUST derive one
-challenge over one transcript for the whole presentation. Composing linked or predicate proofs
-from independent single-proof invocations is the specific error to avoid.<a href="#section-8.1-1" class="pilcrow">¶</a></p>
+challenge over one transcript for the whole presentation. Composing linked, predicate, or
+non-revocation proofs from independent single-proof invocations is the specific error to avoid.<a href="#section-9.1-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="range-ceiling">
-<section id="section-8.2">
+<section id="section-9.2">
         <h3 id="name-ul-264-is-a-soundness-bound">
-<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-ul-264-is-a-soundness-bound" class="section-name selfRef"><code>u^L &lt;= 2^64</code> is a soundness bound, not a limit</a>
+<a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-ul-264-is-a-soundness-bound" class="section-name selfRef"><code>u^L &lt;= 2^64</code> is a soundness bound, not a limit</a>
         </h3>
-<p id="section-8.2-1">The one-sided range trick relies on a negative difference <code>(m - bound) mod r</code> being a <code>~2^255</code>
+<p id="section-9.2-1">The one-sided range trick relies on a negative difference <code>(m - bound) mod r</code> being a <code>~2^255</code>
 scalar that cannot be written as <code>sum_i u^i * d_i</code> with each <code>d_i &lt; u</code> and <code>u^L &lt;= 2^64</code>. That
 undecomposability only holds while <code>u^L</code> is far below <code>r</code>. A Verifier that accepted <code>L</code> large
 enough for <code>u^L</code> to approach <code>r</code> would have proven nothing — every scalar would be "in range".
-Both the Prover and the Verifier MUST reject <code>u^L &gt; 2^64</code>.<a href="#section-8.2-1" class="pilcrow">¶</a></p>
+Both the Prover and the Verifier MUST reject <code>u^L &gt; 2^64</code>.<a href="#section-9.2-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="identity-v-must-be-rejected">
-<section id="section-8.3">
+<section id="section-9.3">
         <h3 id="name-identity-v-must-be-rejected">
-<a href="#section-8.3" class="section-number selfRef">8.3. </a><a href="#name-identity-v-must-be-rejected" class="section-name selfRef">Identity <code>V</code> must be rejected</a>
+<a href="#section-9.3" class="section-number selfRef">9.3. </a><a href="#name-identity-v-must-be-rejected" class="section-name selfRef">Identity <code>V</code> must be rejected</a>
         </h3>
-<p id="section-8.3-1">An identity <code>V</code> satisfies the digit/membership pairing relation for <em>any</em> claimed digit or member
+<p id="section-9.3-1">An identity <code>V</code> satisfies the digit/membership pairing relation for <em>any</em> claimed digit or member
 with <code>v = 0</code>, which voids the alphabet bound entirely. Provers draw <code>v != 0</code>; Verifiers and
-deserializers MUST reject an identity <code>V</code>.<a href="#section-8.3-1" class="pilcrow">¶</a></p>
+deserializers MUST reject an identity <code>V</code>.<a href="#section-9.3-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="shared-alphabet-randomness">
-<section id="section-8.4">
+<section id="section-9.4">
         <h3 id="name-shared-alphabet-randomness-">
-<a href="#section-8.4" class="section-number selfRef">8.4. </a><a href="#name-shared-alphabet-randomness-" class="section-name selfRef">Shared alphabet randomness is brute-forceable</a>
+<a href="#section-9.4" class="section-number selfRef">9.4. </a><a href="#name-shared-alphabet-randomness-" class="section-name selfRef">Shared alphabet randomness is brute-forceable</a>
         </h3>
-<p id="section-8.4-1">Independence of the blinding <code>v</code> across alphabet proofs is not merely hygiene here. If two
-alphabet proofs reuse one <code>v</code>, then <code>V_1 = A_a * v</code> and <code>V_2 = B_b * v</code> satisfy<a href="#section-8.4-1" class="pilcrow">¶</a></p>
-<div class="alignLeft art-text artwork" id="section-8.4-2">
+<p id="section-9.4-1">Independence of the blinding <code>v</code> across alphabet proofs is not merely hygiene here. If two
+alphabet proofs reuse one <code>v</code>, then <code>V_1 = A_a * v</code> and <code>V_2 = B_b * v</code> satisfy<a href="#section-9.4-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-9.4-2">
 <pre>e(V_1, y_1 + a * G2.BASE) == e(V_2, y_2 + b * G2.BASE)
-</pre><a href="#section-8.4-2" class="pilcrow">¶</a>
+</pre><a href="#section-9.4-2" class="pilcrow">¶</a>
 </div>
-<p id="section-8.4-3">and because alphabets are small (a base-16 digit alphabet, a handful of set members), a Verifier
+<p id="section-9.4-3">and because alphabets are small (a base-16 digit alphabet, a handful of set members), a Verifier
 can sweep all candidate pairs <code>(a, b)</code> and recover both hidden values outright — the values, not
 just a relation, at trivial cost. The Prover therefore enforces first-drawn-scalar independence
-<em>jointly</em> across all range and membership proofs in a presentation, not per proof.<a href="#section-8.4-3" class="pilcrow">¶</a></p>
+<em>jointly</em> across all range and membership proofs in a presentation, not per proof. The reference
+implementation places accumulator-proof randomizers in the same collision guard so that a
+misconfigured deterministic randomness source is rejected across every predicate kind.<a href="#section-9.4-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="accumulator-proofs-require-a-credential-binding">
+<section id="section-9.5">
+        <h3 id="name-accumulator-proofs-require-">
+<a href="#section-9.5" class="section-number selfRef">9.5. </a><a href="#name-accumulator-proofs-require-" class="section-name selfRef">Accumulator proofs require a credential binding</a>
+        </h3>
+<p id="section-9.5-1">The CDH membership proof in <a href="#cdh-membership-proof-and-bbs-binding" class="auto internal xref">Section 7.3</a> is not a standalone proof of
+credential validity. Its omitted <code>s_y</code> is a deliberate partial-proof interface: the Verifier MUST
+source that scalar from the referenced hidden BBS slot under the same merged challenge. Accepting
+a caller-supplied element response, or treating accumulator membership alone as authentication,
+would sever the proof from the issuer signature.<a href="#section-9.5-1" class="pilcrow">¶</a></p>
+<p id="section-9.5-2">The Verifier MUST reject identity <code>CPrime</code>, identity <code>CBar</code>, an identity accumulator value, a
+failed pairing relation, and a missing or disclosed referenced slot.<a href="#section-9.5-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="positive-only-deletion-only-registry">
+<section id="section-9.6">
+        <h3 id="name-positive-only-deletion-only">
+<a href="#section-9.6" class="section-number selfRef">9.6. </a><a href="#name-positive-only-deletion-only" class="section-name selfRef">Positive-only, deletion-only registry</a>
+        </h3>
+<p id="section-9.6-1">An implementation MUST NOT issue non-membership witnesses. The universal VB variant needs an
+additional secret initialization to address the pooled-witness trapdoor-recovery attack of
+<span>[<a href="#VB-ATTACK" class="cite xref">VB-ATTACK</a>]</span>; credkit has no use for that variant because revocation is removal from an unrevoked
+set.<a href="#section-9.6-1" class="pilcrow">¶</a></p>
+<p id="section-9.6-2">An implementation also MUST NOT publish accumulator addition updates. The additions-static
+witness formula permits issuance without changing public state, while public VB batch-addition
+data enables the attack described by <span>[<a href="#ALLOSAUR" class="cite xref">ALLOSAUR</a>]</span>. Deletion-only Ω data does not provide the same
+forgery path. Binding every membership proof to an issuer-signed hidden id further makes a forged
+witness insufficient by itself.<a href="#section-9.6-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="registry-freshness-is-verifier-policy">
+<section id="section-9.7">
+        <h3 id="name-registry-freshness-is-verif">
+<a href="#section-9.7" class="section-number selfRef">9.7. </a><a href="#name-registry-freshness-is-verif" class="section-name selfRef">Registry freshness is verifier policy</a>
+        </h3>
+<p id="section-9.7-1">The merged transcript binds the registry public key, accumulator value, and epoch supplied by the
+Verifier. Cryptographic verification establishes non-revocation as of exactly that state; it does
+not decide whether the state is fresh enough. Verifiers MUST obtain registry state independently
+of the presentation and SHOULD set an explicit maximum tolerated age. A carried wire copy may be
+used for diagnostics but MUST NOT replace verifier-supplied state.<a href="#section-9.7-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="modular-predicate-semantics">
-<section id="section-8.5">
+<section id="section-9.8">
         <h3 id="name-modular-predicate-semantics">
-<a href="#section-8.5" class="section-number selfRef">8.5. </a><a href="#name-modular-predicate-semantics" class="section-name selfRef">Modular predicate semantics</a>
+<a href="#section-9.8" class="section-number selfRef">9.8. </a><a href="#name-modular-predicate-semantics" class="section-name selfRef">Modular predicate semantics</a>
         </h3>
-<p id="section-8.5-1">A predicate proves a statement about scalars mod <code>r</code>: <code>greaterOrEqual</code> proves
+<p id="section-9.8-1">A predicate proves a statement about scalars mod <code>r</code>: <code>greaterOrEqual</code> proves
 <code>(m - bound) mod r ∈ [0, u^L)</code>. It reads as the natural <code>&gt;=</code>/<code>&lt;=</code> only because the application
 encodes honest values well below <code>r</code> — for example a date of birth as days since 1900, or an
 integer under <code>2^64</code>. An application that signs values near <code>r</code> and expects signed comparison is
 using the predicate outside the regime where its plain-language reading holds. This is an
 application responsibility; the library enforces the <code>2^64</code> ceiling on <code>u^L</code> but cannot know an
-application's intended encoding.<a href="#section-8.5-1" class="pilcrow">¶</a></p>
+application's intended encoding.<a href="#section-9.8-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="trusted-setup-and-u-sdh">
-<section id="section-8.6">
+<section id="section-9.9">
         <h3 id="name-trusted-setup-and-u-sdh">
-<a href="#section-8.6" class="section-number selfRef">8.6. </a><a href="#name-trusted-setup-and-u-sdh" class="section-name selfRef">Trusted setup and <code>u</code>-SDH</a>
+<a href="#section-9.9" class="section-number selfRef">9.9. </a><a href="#name-trusted-setup-and-u-sdh" class="section-name selfRef">Trusted setup and <code>u</code>-SDH</a>
         </h3>
-<p id="section-8.6-1">The only trust the parameters require is that the signing scalar <code>x</code> was discarded. A Verifier
+<p id="section-9.9-1">The only trust the parameters require is that the signing scalar <code>x</code> was discarded. A Verifier
 that keeps <code>x</code> gains nothing it did not already have — it can already accept or reject at will;
 the alphabet is <em>its own</em> acceptance policy. Soundness against the Prover reduces to <code>u</code>-SDH:
 exhibiting a valid blinded signature on a value outside the signed set is a Boneh-Boyen forgery.
-A consumer using third-party parameters SHOULD validate them once on import.<a href="#section-8.6-1" class="pilcrow">¶</a></p>
+A consumer using third-party parameters SHOULD validate them once on import.<a href="#section-9.9-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="per-prover-alphabets">
-<section id="section-8.7">
+<section id="section-9.10">
         <h3 id="name-per-prover-alphabets-are-a-">
-<a href="#section-8.7" class="section-number selfRef">8.7. </a><a href="#name-per-prover-alphabets-are-a-" class="section-name selfRef">Per-prover alphabets are a linkability trap</a>
+<a href="#section-9.10" class="section-number selfRef">9.10. </a><a href="#name-per-prover-alphabets-are-a-" class="section-name selfRef">Per-prover alphabets are a linkability trap</a>
         </h3>
-<p id="section-8.7-1">Parameter validation confirms an alphabet is well-formed; it cannot detect a Verifier that issues
+<p id="section-9.10-1">Parameter validation confirms an alphabet is well-formed; it cannot detect a Verifier that issues
 a <em>distinct</em> well-formed alphabet to each Prover, turning an otherwise unlinkable predicate proof
 into a per-Prover tag. This is the same linkability class as per-Prover BBS generators. Provers
 SHOULD fetch predicate parameters from the same published location as every other Prover, and
-treat a Verifier-specific alphabet as a red flag.<a href="#section-8.7-1" class="pilcrow">¶</a></p>
+treat a Verifier-specific alphabet as a red flag.<a href="#section-9.10-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="transcript-order-binding">
-<section id="section-8.8">
+<section id="section-9.11">
         <h3 id="name-transcript-order-binding">
-<a href="#section-8.8" class="section-number selfRef">8.8. </a><a href="#name-transcript-order-binding" class="section-name selfRef">Transcript order binding</a>
+<a href="#section-9.11" class="section-number selfRef">9.11. </a><a href="#name-transcript-order-binding" class="section-name selfRef">Transcript order binding</a>
         </h3>
-<p id="section-8.8-1">Statement, constraint, and predicate order is bound into the challenge and is not canonicalized.
+<p id="section-9.11-1">Statement, constraint, and predicate order is bound into the challenge and is not canonicalized.
 A Prover and Verifier that disagree on order produce different challenges and the presentation
 fails closed, rather than a canonicalizer masking the disagreement. Likewise the full serialized
 predicate parameters — including the member list and its order — are absorbed, so a Verifier
-cannot narrow, widen, re-sign, or reorder the set after the fact without the challenge changing.<a href="#section-8.8-1" class="pilcrow">¶</a></p>
+cannot narrow, widen, re-sign, or reorder the set after the fact without the challenge changing.<a href="#section-9.11-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="fail-closed-verification">
-<section id="section-8.9">
+<section id="section-9.12">
         <h3 id="name-fail-closed-verification">
-<a href="#section-8.9" class="section-number selfRef">8.9. </a><a href="#name-fail-closed-verification" class="section-name selfRef">Fail-closed verification</a>
+<a href="#section-9.12" class="section-number selfRef">9.12. </a><a href="#name-fail-closed-verification" class="section-name selfRef">Fail-closed verification</a>
         </h3>
-<p id="section-8.9-1">Verification returns a boolean and MUST return <code>false</code> on any malformed input, broken transcript,
+<p id="section-9.12-1">Verification returns a boolean and MUST return <code>false</code> on any malformed input, broken transcript,
 or failed check; the octet parsers throw on malformed input. Every point and scalar entering from
-the wire is range- and subgroup-validated.<a href="#section-8.9-1" class="pilcrow">¶</a></p>
+the wire is range- and subgroup-validated.<a href="#section-9.12-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="privacy-considerations">
-<section id="section-9">
+<section id="section-10">
       <h2 id="name-privacy-considerations">
-<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy considerations</a>
+<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy considerations</a>
       </h2>
 <div id="verifier-unlinkability-is-preserved-by-omission">
-<section id="section-9.1">
+<section id="section-10.1">
         <h3 id="name-verifier-unlinkability-is-p">
-<a href="#section-9.1" class="section-number selfRef">9.1. </a><a href="#name-verifier-unlinkability-is-p" class="section-name selfRef">Verifier unlinkability is preserved by omission</a>
+<a href="#section-10.1" class="section-number selfRef">10.1. </a><a href="#name-verifier-unlinkability-is-p" class="section-name selfRef">Verifier unlinkability is preserved by omission</a>
         </h3>
-<p id="section-9.1-1">BBS proofs are randomized per presentation, so unlinkability is a property credkit must avoid
+<p id="section-10.1-1">BBS proofs are randomized per presentation, so unlinkability is a property credkit must avoid
 <em>destroying</em>, not one it must add. It is preserved by never placing a stable, disclosed value in
-a presentation: predicates disclose the truth of a comparison, never a commitment or a value.
-This is the specific improvement over disclosing a fixed commitment to a sensitive attribute, in
-which the commitment is a perfect cross-verifier correlation handle.<a href="#section-9.1-1" class="pilcrow">¶</a></p>
+a presentation: predicates disclose the truth of a comparison or accumulator membership, never a
+commitment, status index, or value. This is the specific improvement over disclosing a fixed
+commitment or stable status-list index, either of which is a perfect cross-verifier correlation
+handle.<a href="#section-10.1-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="what-a-predicate-reveals">
-<section id="section-9.2">
+<section id="section-10.2">
         <h3 id="name-what-a-predicate-reveals">
-<a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-what-a-predicate-reveals" class="section-name selfRef">What a predicate reveals</a>
+<a href="#section-10.2" class="section-number selfRef">10.2. </a><a href="#name-what-a-predicate-reveals" class="section-name selfRef">What a predicate reveals</a>
         </h3>
-<p id="section-9.2-1">A range predicate reveals only that the hidden value satisfies the one-sided comparison (and, as
+<p id="section-10.2-1">A range predicate reveals only that the hidden value satisfies the one-sided comparison (and, as
 a side effect of the construction, that it lies below <code>u^L</code>). A membership predicate reveals only
 that the hidden value is one of the published members, never which. An equality constraint
 reveals only that the referenced slots are equal, never the shared value. The number and kind of
-predicates, and the parameters used, are of course visible in the spec both parties share.<a href="#section-9.2-1" class="pilcrow">¶</a></p>
+predicates, and the parameters used, are of course visible in the spec both parties share.<a href="#section-10.2-1" class="pilcrow">¶</a></p>
+<p id="section-10.2-2">An accumulator predicate reveals that the credential's hidden revocation id is a member of one
+specific public accumulator value at one epoch. It does not reveal the id or the membership
+witness. The registry public key, accumulator value, and epoch are public and common to all
+holders using that registry state.<a href="#section-10.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="revocation-update-privacy">
+<section id="section-10.3">
+        <h3 id="name-revocation-update-privacy">
+<a href="#section-10.3" class="section-number selfRef">10.3. </a><a href="#name-revocation-update-privacy" class="section-name selfRef">Revocation update privacy</a>
+        </h3>
+<p id="section-10.3-1">Issuance produces no public registry event. Each deletion epoch publishes the same removed-id and
+Ω data to every holder, so witness synchronization needs no per-holder query and creates no
+holder-specific correlation channel. The update feed does reveal the random scalars removed in an
+epoch, but those values are never disclosed from credentials and are not meaningful outside the
+registry.<a href="#section-10.3-1" class="pilcrow">¶</a></p>
+<p id="section-10.3-2">A Verifier that accepts multiple epochs learns which accepted state a holder used. A stale epoch
+can therefore fingerprint the holder's synchronization lag. Holders SHOULD update before
+presenting, and Verifiers SHOULD keep any acceptance window no wider than operationally required.<a href="#section-10.3-2" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
 </div>
 <div id="the-cryptosuite-layer">
-<section id="section-10">
+<section id="section-11">
       <h2 id="name-the-cryptosuite-layer">
-<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-the-cryptosuite-layer" class="section-name selfRef">The cryptosuite layer</a>
+<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-the-cryptosuite-layer" class="section-name selfRef">The cryptosuite layer</a>
       </h2>
-<p id="section-10-1">A JSON-LD Data Integrity cryptosuite that packages these presentations as W3C Verifiable
+<p id="section-11-1">A JSON-LD Data Integrity cryptosuite that packages these presentations as W3C Verifiable
 Credentials <span>[<a href="#VC-DATA-MODEL" class="cite xref">VC-DATA-MODEL</a>]</span>, in the manner of <code>bbs-2023</code> <span>[<a href="#DI-BBS" class="cite xref">DI-BBS</a>]</span>, is implemented for both the
 single-credential and the multi-credential case. It is summarized here to place the layers above
-in context; its full specification is a separate matter and is not attempted in this document.<a href="#section-10-1" class="pilcrow">¶</a></p>
+in context; its full specification is a separate matter and is not attempted in this document.<a href="#section-11-1" class="pilcrow">¶</a></p>
 <ul class="compact">
-<li class="compact" id="section-10-2.1">
+<li class="compact" id="section-11-2.1">
           <strong>Kept</strong> from <code>bbs-2023</code>: RDF Dataset Canonicalization of the credential, the per-base-proof
 HMAC label shuffle, the JSON-Pointer split between mandatory and selectively disclosed
 statements (mandatory statements folded into the BBS header as <code>proofHash || mandatoryHash</code>),
-one BBS message per non-mandatory N-Quad, and a CBOR-then-multibase proof-value envelope.<a href="#section-10-2.1" class="pilcrow">¶</a>
+one BBS message per non-mandatory N-Quad, and a CBOR-then-multibase proof-value envelope.<a href="#section-11-2.1" class="pilcrow">¶</a>
 </li>
-        <li class="compact" id="section-10-2.2">
+        <li class="compact" id="section-11-2.2">
           <strong>Replaced</strong>: the proof. Every derived proof is a credkit presentation
 <a href="#composite-presentations" class="auto internal xref">Section 5</a> rather than a single BBS proof — including plain selective
 disclosure with no predicates, so there is one derivation path and no <code>bbs-2023</code>-shaped special
 case (the uniform-single-statement rule of
 <a href="#deliberate-non-interoperability-above-the-core" class="auto internal xref">Section 3.4</a>, one layer up). The cryptosuite identifier,
 <code>@context</code>, and CBOR envelope prefix bytes are disjoint from <code>bbs-2023</code>'s, so a credkit proof
-value can never parse as a <code>bbs-2023</code> one; the suite makes no interoperability claim.<a href="#section-10-2.2" class="pilcrow">¶</a>
+value can never parse as a <code>bbs-2023</code> one; the suite makes no interoperability claim.<a href="#section-11-2.2" class="pilcrow">¶</a>
 </li>
-        <li class="compact" id="section-10-2.3">
+        <li class="compact" id="section-11-2.3">
           <strong>Added — the numeric seam.</strong> A predicate needs the message scalar to <em>be</em> the value
 <a href="#numeric-messages" class="auto internal xref">Section 3.1</a>, but a <code>bbs-2023</code> message is a hash of an N-Quad string and no arithmetic
 survives the hash. The issuer therefore appends, after the quad messages, one numeric ("twin")
@@ -2554,42 +2880,62 @@ pointer, encoded (for example a date as days since 1900) as an integer message
 BBS header segment, <code>bbsHeader = proofHash || mandatoryHash || H(serialize(numericDecl))</code>, so a
 Prover cannot lie about a slot's meaning without breaking header reconstruction — the binding is
 the signature itself, not a new mechanism, and the declaration carries no per-credential
-correlation handle into the disclosed document. Range, set-membership, and equality claims all
-point at twins; the last yields cross-issuer equality over a hidden value when both issuers
-declared the same encoder.<a href="#section-10-2.3" class="pilcrow">¶</a>
+correlation handle into the disclosed document. Range, set-membership, equality, and
+non-revocation claims point at twins, subject to each encoder's allowed uses; equality yields
+cross-issuer equality over a hidden value when both issuers declared the same predicate-safe
+encoder.<a href="#section-11-2.3" class="pilcrow">¶</a>
+</li>
+        <li class="compact" id="section-11-2.4">
+          <strong>Added — revocation policy.</strong> The Issuer creates a fresh uniform <code>Fr</code> scalar and places its
+canonical decimal form at a declared <code>/credentialStatus/revocationId</code> pointer using the
+<code>frScalar</code> encoder. The twin is signed and always hidden. Unlike predicate-safe values such as
+dates and unsigned integers, an <code>frScalar</code> twin cannot be targeted by range, set-membership, or
+equality claims: those operations would let a Verifier probe or correlate a permanent id.
+Conversely, a non-revocation claim MUST target an <code>frScalar</code> twin. The source N-Quad for the id
+is non-disclosable even through a subtree selection such as <code>/credentialStatus</code>.<a href="#section-11-2.4" class="pilcrow">¶</a>
+</li>
+        <li class="compact" id="section-11-2.5">
+          <strong>Added — witness and registry sidecars.</strong> A current membership witness enters the Prover's
+<code>presentGraph</code> call but is never serialized. The Verifier's <code>expectedNonRevocationClaims</code>
+supplies registry parameters, accumulator value, and epoch from an independent fetch. The VP
+envelope carries <code>[statement, declaration index, params hash, accumulator, epoch]</code> only as
+cross-checks for useful synchronization errors; verification uses the Verifier's values in the
+transcript, never the carried copies.<a href="#section-11-2.5" class="pilcrow">¶</a>
 </li>
       </ul>
-<p id="section-10-3">The multi-credential case — N credentials under one merged challenge inside a Verifiable
+<p id="section-11-3">The multi-credential case — N credentials under one merged challenge inside a Verifiable
 Presentation — is secured by a <em>second</em> Data Integrity cryptosuite. Each embedded credential
 carries a <em>statement descriptor</em> (its reconstruction data — mode, label map, index sets, N-Quads,
 numeric declaration); the issuer's verification-method identifier is the credential proof's own
 sibling field, never a key. The presentation-level proof carries the merged credkit presentation
 of <a href="#composite-presentations" class="auto internal xref">Section 5</a> together with the equality constraints and per-statement claim
-lists. The <code>@container: @graph</code> semantics of the VC v2 context mean the presentation body is a
-carrier the presentation proof need not hash over — each credential is already bound by its own
+lists, including any non-revocation gates. The <code>@container: @graph</code> semantics of the VC v2 context
+mean the presentation body is a carrier the presentation proof need not hash over — each
+credential is already bound by its own
 BBS signature and absorbed into the merged transcript — so reordering or substituting credentials
 that differ in disclosed content breaks the challenge without an envelope-level integrity check.
 One ciphersuite is pinned across the whole presentation (the link-secret witness is
 suite-dependent), and a holder identifier is unrepresentable by construction. The design record
-and its rationale are FINDINGS §14–§17 in the repository; this document specifies the presentation
-and predicate layer those build on, not the cryptosuite envelope.<a href="#section-10-3" class="pilcrow">¶</a></p>
+and its rationale are FINDINGS §14–§19 in the repository; this document specifies the presentation,
+predicate, and accumulator layer those build on, not the full cryptosuite envelope or an
+application's registry-discovery vocabulary.<a href="#section-11-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="iana-considerations">
-<section id="section-11">
+<section id="section-12">
       <h2 id="name-iana-considerations">
-<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA considerations</a>
+<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA considerations</a>
       </h2>
-<p id="section-11-1">This document has no IANA actions. It defines no new registries and requests no code points.<a href="#section-11-1" class="pilcrow">¶</a></p>
+<p id="section-12-1">This document has no IANA actions. It defines no new registries and requests no code points.<a href="#section-12-1" class="pilcrow">¶</a></p>
 </section>
 </div>
-<section id="section-12">
+<section id="section-13">
       <h2 id="name-references">
-<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-references" class="section-name selfRef">References</a>
+<a href="#section-13" class="section-number selfRef">13. </a><a href="#name-references" class="section-name selfRef">References</a>
       </h2>
-<section id="section-12.1">
+<section id="section-13.1">
         <h3 id="name-normative-references">
-<a href="#section-12.1" class="section-number selfRef">12.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+<a href="#section-13.1" class="section-number selfRef">13.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
         </h3>
 <dl class="references">
 <dt id="I-D.irtf-cfrg-bbs-blind-signatures">[I-D.irtf-cfrg-bbs-blind-signatures]</dt>
@@ -2602,11 +2948,15 @@ and predicate layer those build on, not the cryptosuite envelope.<a href="#secti
 <dd class="break"></dd>
 </dl>
 </section>
-<section id="section-12.2">
+<section id="section-13.2">
         <h3 id="name-informative-references">
-<a href="#section-12.2" class="section-number selfRef">12.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
+<a href="#section-13.2" class="section-number selfRef">13.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
         </h3>
 <dl class="references">
+<dt id="ALLOSAUR">[ALLOSAUR]</dt>
+        <dd>
+<span class="refAuthor">Jaques, S.</span>, <span class="refAuthor">Lodder, M.</span>, and <span class="refAuthor">H. Montgomery</span>, <span class="refTitle">"ALLOSAUR: Accumulator with Low-Latency Oblivious Sublinear Anonymous credential Updates with Revocations"</span>, <span class="seriesInfo">IACR Cryptology ePrint Archive 2022/1362</span>, <time datetime="2022" class="refDate">2022</time>, <span>&lt;<a href="https://eprint.iacr.org/2022/1362">https://eprint.iacr.org/2022/1362</a>&gt;</span>. </dd>
+<dd class="break"></dd>
 <dt id="BB04">[BB04]</dt>
         <dd>
 <span class="refAuthor">Boneh, D.</span> and <span class="refAuthor">X. Boyen</span>, <span class="refTitle">"Short Signatures Without Random Oracles"</span>, <span class="seriesInfo">In EUROCRYPT</span>, <time datetime="2004" class="refDate">2004</time>, <span>&lt;<a href="https://link.springer.com/chapter/10.1007/978-3-540-24676-3_4">https://link.springer.com/chapter/10.1007/978-3-540-24676-3_4</a>&gt;</span>. </dd>
@@ -2614,6 +2964,10 @@ and predicate layer those build on, not the cryptosuite envelope.<a href="#secti
 <dt id="CCS08">[CCS08]</dt>
         <dd>
 <span class="refAuthor">Camenisch, J.</span>, <span class="refAuthor">Chaabouni, R.</span>, and <span class="refAuthor">a. shelat</span>, <span class="refTitle">"Efficient Protocols for Set Membership and Range Proofs"</span>, <span class="seriesInfo">In ASIACRYPT</span>, <time datetime="2008" class="refDate">2008</time>, <span>&lt;<a href="https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15">https://link.springer.com/chapter/10.1007/978-3-540-89255-7_15</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="CH09">[CH09]</dt>
+        <dd>
+<span class="refAuthor">Camacho, P.</span> and <span class="refAuthor">A. Hevia</span>, <span class="refTitle">"On the Impossibility of Batch Update for Cryptographic Accumulators"</span>, <span class="seriesInfo">IACR Cryptology ePrint Archive 2009/612</span>, <time datetime="2009" class="refDate">2009</time>, <span>&lt;<a href="https://eprint.iacr.org/2009/612">https://eprint.iacr.org/2009/612</a>&gt;</span>. </dd>
 <dd class="break"></dd>
 <dt id="DI-BBS">[DI-BBS]</dt>
         <dd>
@@ -2631,6 +2985,10 @@ and predicate layer those build on, not the cryptosuite envelope.<a href="#secti
         <dd>
 <span class="refAuthor">Orrù, M.</span> and <span class="refAuthor">C. Yun</span>, <span class="refTitle">"Interactive Sigma Proofs"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-irtf-cfrg-sigma-protocols-02</span>, <time datetime="2026-03-02" class="refDate">2 March 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-sigma-protocols-02">https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-sigma-protocols-02</a>&gt;</span>. </dd>
 <dd class="break"></dd>
+<dt id="KB21">[KB21]</dt>
+        <dd>
+<span class="refAuthor">Karantaidou, I.</span> and <span class="refAuthor">F. Baldimtsi</span>, <span class="refTitle">"Efficient Constructions of Pairing Based Accumulators"</span>, <span class="seriesInfo">IACR Cryptology ePrint Archive 2021/638</span>, <time datetime="2021" class="refDate">2021</time>, <span>&lt;<a href="https://eprint.iacr.org/2021/638">https://eprint.iacr.org/2021/638</a>&gt;</span>. </dd>
+<dd class="break"></dd>
 <dt id="RFC2119">[RFC2119]</dt>
         <dd>
 <span class="refAuthor">Bradner, S.</span>, <span class="refTitle">"Key words for use in RFCs to Indicate Requirement Levels"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 2119</span>, <span class="seriesInfo">DOI 10.17487/RFC2119</span>, <time datetime="1997-03" class="refDate">March 1997</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc2119">https://www.rfc-editor.org/info/rfc2119</a>&gt;</span>. </dd>
@@ -2646,6 +3004,14 @@ and predicate layer those build on, not the cryptosuite envelope.<a href="#secti
 <dt id="RFC9380">[RFC9380]</dt>
         <dd>
 <span class="refAuthor">Faz-Hernandez, A.</span>, <span class="refAuthor">Scott, S.</span>, <span class="refAuthor">Sullivan, N.</span>, <span class="refAuthor">Wahby, R. S.</span>, and <span class="refAuthor">C. A. Wood</span>, <span class="refTitle">"Hashing to Elliptic Curves"</span>, <span class="seriesInfo">RFC 9380</span>, <span class="seriesInfo">DOI 10.17487/RFC9380</span>, <time datetime="2023-08" class="refDate">August 2023</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc9380">https://www.rfc-editor.org/info/rfc9380</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="VB-ATTACK">[VB-ATTACK]</dt>
+        <dd>
+<span class="refAuthor">Biryukov, A.</span>, <span class="refAuthor">Udovenko, A.</span>, and <span class="refAuthor">G. Vitto</span>, <span class="refTitle">"Cryptanalysis of Au et al. Dynamic Universal Accumulator"</span>, <span class="seriesInfo">IACR Cryptology ePrint Archive 2020/598</span>, <time datetime="2020" class="refDate">2020</time>, <span>&lt;<a href="https://eprint.iacr.org/2020/598">https://eprint.iacr.org/2020/598</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="VB20">[VB20]</dt>
+        <dd>
+<span class="refAuthor">Vitto, G.</span> and <span class="refAuthor">A. Biryukov</span>, <span class="refTitle">"Dynamic Universal Accumulator with Batch Update over Bilinear Groups"</span>, <span class="seriesInfo">IACR Cryptology ePrint Archive 2020/777</span>, <time datetime="2020" class="refDate">2020</time>, <span>&lt;<a href="https://eprint.iacr.org/2020/777">https://eprint.iacr.org/2020/777</a>&gt;</span>. </dd>
 <dd class="break"></dd>
 <dt id="VC-DATA-MODEL">[VC-DATA-MODEL]</dt>
       <dd>
