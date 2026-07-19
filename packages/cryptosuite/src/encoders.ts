@@ -20,8 +20,16 @@ export interface NumericEncoder {
   readonly datatypes: readonly string[];
   /** Strict lexical form -> value. Throws on anything outside the canonical lexical space. */
   readonly encode: (lexical: string) => bigint;
-  /** Inclusive ceiling of the encoder's honest range; far below 2^64 by construction. */
+  /** Inclusive ceiling of the encoder's honest range; far below 2^64 when predicateSafe. */
   readonly maxValue: bigint;
+  /**
+   * Whether range/set predicates and equality claims over this twin are sound AND safe.
+   * Predicate-safe encoders keep honest values far below 2^64 (the modular range-proof
+   * guarantee). `frScalar` is not predicate-safe for the opposite reason: its values are
+   * full-entropy identifiers, and answering range claims over one would let a verifier
+   * binary-search its bits across presentations — a correlation channel, not a predicate.
+   */
+  readonly predicateSafe: boolean;
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -35,6 +43,7 @@ const DATE_1900: NumericEncoder = {
   id: "date1900",
   datatypes: [`${XSD}date`],
   maxValue: BigInt((Date.UTC(9999, 11, 31) - EPOCH_1900) / MS_PER_DAY),
+  predicateSafe: true,
   encode(lexical: string): bigint {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(lexical);
     if (!match) throw new Error(`date1900: "${lexical}" is not canonical CCYY-MM-DD`);
@@ -67,6 +76,7 @@ const UINT_64: NumericEncoder = {
     `${XSD}unsignedInt`,
   ],
   maxValue: (1n << 64n) - 1n,
+  predicateSafe: true,
   encode(lexical: string): bigint {
     if (!/^(0|[1-9]\d*)$/.test(lexical)) {
       throw new Error(`uint64: "${lexical}" is not a canonical unsigned integer`);
@@ -77,8 +87,33 @@ const UINT_64: NumericEncoder = {
   },
 };
 
+/**
+ * The BLS12-381 scalar-field order r. Both registered ciphersuites share the curve, and
+ * encoders are deliberately suite-independent, so the constant lives here; a unit test pins
+ * it against @noble/curves' own Fr.ORDER so the two can never drift.
+ */
+export const BLS12_381_FR_ORDER =
+  0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n;
+
+// Full-Fr identifiers: accumulator revocation ids (FINDINGS §18 — issuer-assigned random
+// scalars, signed hidden, never disclosed). NOT predicate-safe: see NumericEncoder.
+const FR_SCALAR: NumericEncoder = {
+  id: "frScalar",
+  datatypes: [`${XSD}integer`, `${XSD}nonNegativeInteger`, `${XSD}positiveInteger`],
+  maxValue: BLS12_381_FR_ORDER - 1n,
+  predicateSafe: false,
+  encode(lexical: string): bigint {
+    if (!/^(0|[1-9]\d*)$/.test(lexical)) {
+      throw new Error(`frScalar: "${lexical}" is not a canonical unsigned integer`);
+    }
+    const value = BigInt(lexical);
+    if (value >= BLS12_381_FR_ORDER) throw new Error(`frScalar: value >= the Fr order`);
+    return value;
+  },
+};
+
 const ENCODERS: ReadonlyMap<string, NumericEncoder> = new Map(
-  [DATE_1900, UINT_64].map((e) => [e.id, e]),
+  [DATE_1900, UINT_64, FR_SCALAR].map((e) => [e.id, e]),
 );
 
 export function getEncoder(id: string): NumericEncoder {

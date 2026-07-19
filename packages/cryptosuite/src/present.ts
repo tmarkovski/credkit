@@ -42,14 +42,15 @@ import {
   assertMembershipClaimMatches,
   assertRangeClaimMatches,
   compressLabelMap,
-  declIndexFor,
   membershipParamsHash,
+  predicateSafeDeclIndexFor,
   prepareStatement,
   rangeParamsHash,
   reconstructStatement,
   type MembershipClaimRequest,
   type RangeClaimRequest,
 } from "./statement.js";
+import type { NumericDeclarationEntry } from "./decl.js";
 import type { HolderBinding } from "./issue.js";
 
 export type { MembershipClaimRequest, RangeClaimRequest } from "./statement.js";
@@ -89,7 +90,7 @@ export async function deriveProof(
 
   const predicates: RangePredicate[] = rangeClaims.map((claim) => ({
     statement: 0,
-    messageIndex: nQuads + declIndexFor(numericDecl, claim.pointer, "range claim"),
+    messageIndex: nQuads + predicateSafeDeclIndexFor(numericDecl, claim.pointer, "range claim"),
     kind: claim.kind,
     bound: claim.bound,
     digits: claim.digits,
@@ -97,7 +98,7 @@ export async function deriveProof(
   }));
   const memberships: SetMembershipPredicate[] = membershipClaims.map((claim) => ({
     statement: 0,
-    messageIndex: nQuads + declIndexFor(numericDecl, claim.pointer, "membership claim"),
+    messageIndex: nQuads + predicateSafeDeclIndexFor(numericDecl, claim.pointer, "membership claim"),
     params: claim.params,
   }));
 
@@ -111,14 +112,14 @@ export async function deriveProof(
   );
 
   const wireRangeClaims: RangeClaim[] = rangeClaims.map((claim) => ({
-    declIndex: declIndexFor(numericDecl, claim.pointer, "range claim"),
+    declIndex: predicateSafeDeclIndexFor(numericDecl, claim.pointer, "range claim"),
     kind: claim.kind,
     bound: claim.bound,
     digits: claim.digits,
     paramsHash: rangeParamsHash(claim.params),
   }));
   const wireMembershipClaims: MembershipClaim[] = membershipClaims.map((claim) => ({
-    declIndex: declIndexFor(numericDecl, claim.pointer, "membership claim"),
+    declIndex: predicateSafeDeclIndexFor(numericDecl, claim.pointer, "membership claim"),
     paramsHash: membershipParamsHash(suite, claim.params),
   }));
 
@@ -241,7 +242,7 @@ async function verifyInner(options: VerifyOptions): Promise<VerifyResult> {
 function matchRangeClaims(
   wire: readonly RangeClaim[],
   expected: readonly RangeClaimRequest[],
-  decl: readonly { pointer: string }[],
+  decl: readonly NumericDeclarationEntry[],
 ): void {
   if (wire.length !== expected.length) {
     throw new Error(
@@ -257,7 +258,7 @@ function matchMembershipClaims(
   suite: Parameters<typeof setParamsToOctets>[0],
   wire: readonly MembershipClaim[],
   expected: readonly MembershipClaimRequest[],
-  decl: readonly { pointer: string }[],
+  decl: readonly NumericDeclarationEntry[],
 ): void {
   if (wire.length !== expected.length) {
     throw new Error(

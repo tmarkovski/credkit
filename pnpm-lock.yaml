@@ -43,6 +43,9 @@ importers:
 
   packages/cryptosuite:
     dependencies:
+      '@credkit/accumulator':
+        specifier: workspace:*
+        version: link:../accumulator
       '@credkit/bbs':
         specifier: workspace:*
         version: link:../bbs
@@ -65,6 +68,9 @@ importers:
       '@digitalbazaar/bbs-2023-cryptosuite':
         specifier: ^2.0.1
         version: 2.0.1
+      '@noble/curves':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1

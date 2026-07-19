@@ -25,17 +25,25 @@ export {
   type NumericDeclarationEntry,
 } from "./decl.js";
 
-export { getEncoder, knownEncoderIds, type NumericEncoder } from "./encoders.js";
+export {
+  BLS12_381_FR_ORDER,
+  getEncoder,
+  knownEncoderIds,
+  type NumericEncoder,
+} from "./encoders.js";
 
 export {
   createHolderBinding,
+  createRevocationId,
   issueCredential,
   verifyIssuedCredential,
   type CreateHolderBindingOptions,
+  type CreateRevocationIdOptions,
   type HolderBinding,
   type IssueOptions,
   type IssuedCredential,
   type ReceiptCheckOptions,
+  type RevocationId,
 } from "./issue.js";
 
 export {
@@ -52,6 +60,7 @@ export {
   presentGraph,
   verifyGraph,
   type ExpectedMembershipClaim,
+  type ExpectedNonRevocationClaim,
   type ExpectedRangeClaim,
   type GraphCredentialInput,
   type GraphEquality,
@@ -61,7 +70,11 @@ export {
   type VerifyGraphResult,
 } from "./presentation.js";
 
-export { encodePresentationHeader } from "./statement.js";
+export {
+  encodePresentationHeader,
+  type NonRevocationClaimRequest,
+  type NonRevocationProveInput,
+} from "./statement.js";
 
 export {
   parseBaseProofValue,
@@ -72,12 +85,14 @@ export {
   serializeDerivedProofValue,
   serializePresentationEnvelope,
   serializeStatementDescriptor,
+  type AccumulatorClaim,
   type BaseProofData,
   type DerivedProofData,
   type MembershipClaim,
   type PresentationEnvelopeData,
   type ProofMode,
   type RangeClaim,
+  type StatementAccumulatorClaim,
   type StatementDescriptorData,
   type StatementMembershipClaim,
   type StatementRangeClaim,

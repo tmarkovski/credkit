@@ -55,6 +55,20 @@ export interface MembershipClaim {
   readonly paramsHash: Uint8Array;
 }
 
+/**
+ * A non-revocation claim's wire record. Every field is redundant with what the verifier
+ * supplies and is cross-checked, never trusted — the fields exist so a mismatch (usually a
+ * holder whose witness lags the registry) fails with a precise error instead of a bare
+ * "proof failed". `accumulator` is the compressed G1 value the prover proved against; it
+ * is compared byte-wise against the verifier's own and never deserialized.
+ */
+export interface AccumulatorClaim {
+  readonly declIndex: number;
+  readonly paramsHash: Uint8Array;
+  readonly accumulator: Uint8Array;
+  readonly epoch: number;
+}
+
 export interface DerivedProofData {
   readonly mode: ProofMode;
   readonly presentationOctets: Uint8Array;
@@ -302,11 +316,14 @@ export interface StatementDescriptorData {
   readonly numericDecl: readonly NumericDeclarationEntry[];
 }
 
-/** A range/membership claim, now tagged with the statement it constrains. */
+/** A range/membership/non-revocation claim, now tagged with the statement it constrains. */
 export interface StatementRangeClaim extends RangeClaim {
   readonly statement: number;
 }
 export interface StatementMembershipClaim extends MembershipClaim {
+  readonly statement: number;
+}
+export interface StatementAccumulatorClaim extends AccumulatorClaim {
   readonly statement: number;
 }
 
@@ -327,6 +344,7 @@ export interface PresentationEnvelopeData {
   readonly rangeClaims: readonly StatementRangeClaim[];
   readonly membershipClaims: readonly StatementMembershipClaim[];
   readonly equalities: readonly WireEquality[];
+  readonly accumulatorClaims: readonly StatementAccumulatorClaim[];
 }
 
 const EQ_KIND_BYTE = { linkSecret: 0, pointer: 1 } as const;
@@ -380,12 +398,19 @@ export function serializePresentationEnvelope(data: PresentationEnvelopeData): s
         ref.kind === "pointer" ? ref.pointer : "",
       ]),
     ),
+    data.accumulatorClaims.map((c) => [
+      c.statement,
+      c.declIndex,
+      c.paramsHash,
+      c.accumulator,
+      c.epoch,
+    ]),
   ]);
 }
 
 export function parsePresentationEnvelope(proofValue: string): PresentationEnvelopeData {
   const { payload } = openEnvelope(proofValue, [[PREFIX.presentation, "baseline"]]);
-  const parts = expectArray(payload, "presentation envelope", 4);
+  const parts = expectArray(payload, "presentation envelope", 5);
   const rangeClaims = expectArray(parts[1]!, "rangeClaims").map((item): StatementRangeClaim => {
     const claim = expectArray(item, "range claim", 6);
     const kind = KIND_FROM_BYTE[expectUint(claim[2]!, "claim kind")];
@@ -428,10 +453,23 @@ export function parsePresentationEnvelope(proofValue: string): PresentationEnvel
     if (refs.length < 2) throw new Error("proof value: equality needs at least two refs");
     return refs;
   });
+  const accumulatorClaims = expectArray(parts[4]!, "accumulatorClaims").map(
+    (item): StatementAccumulatorClaim => {
+      const claim = expectArray(item, "accumulator claim", 5);
+      return {
+        statement: expectUint(claim[0]!, "claim statement"),
+        declIndex: expectUint(claim[1]!, "claim declIndex"),
+        paramsHash: expectBytes(claim[2]!, "claim paramsHash", 32),
+        accumulator: expectBytes(claim[3]!, "claim accumulator", 48),
+        epoch: expectUint(claim[4]!, "claim epoch"),
+      };
+    },
+  );
   return {
     presentationOctets: expectBytes(parts[0]!, "presentationOctets"),
     rangeClaims,
     membershipClaims,
     equalities,
+    accumulatorClaims,
   };
 }

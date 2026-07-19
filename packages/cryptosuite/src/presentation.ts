@@ -26,12 +26,14 @@
  * enforced across the whole presentation (§16: the link secret's scalar is suite-dependent).
  */
 
-import type { G2Point } from "@credkit/bbs";
+import type { G2Point, PointG1 } from "@credkit/bbs";
 import {
   octetsToPresentation,
   presentationToOctets,
   provePresentation,
   verifyPresentation,
+  type AccumulatorMembershipPredicate,
+  type CredentialStatement,
   type EqualityConstraint,
   type PresentationSpec,
   type ProvePresentationOptions,
@@ -42,6 +44,7 @@ import {
 } from "@credkit/proofs";
 import type { DocumentLoader } from "@digitalbazaar/di-sd-primitives";
 import { CREDENTIALS_V2_URL, createDocumentLoader } from "./context.js";
+import type { NumericDeclarationEntry } from "./decl.js";
 import type { HolderBinding } from "./issue.js";
 import {
   parsePresentationEnvelope,
@@ -49,22 +52,28 @@ import {
   serializePresentationEnvelope,
   serializeStatementDescriptor,
   type ProofMode,
+  type StatementAccumulatorClaim,
   type StatementMembershipClaim,
   type StatementRangeClaim,
   type WireEquality,
   type WireEqualityRef,
 } from "./proofValue.js";
 import {
+  accumulatorParamsHash,
   assertMembershipClaimMatches,
+  assertNonRevocationClaimMatches,
   assertRangeClaimMatches,
   compressLabelMap,
-  declIndexFor,
   encodePresentationHeader,
   membershipParamsHash,
+  nonRevocationDeclIndexFor,
+  predicateSafeDeclIndexFor,
   prepareStatement,
   rangeParamsHash,
   reconstructStatement,
   type MembershipClaimRequest,
+  type NonRevocationClaimRequest,
+  type NonRevocationProveInput,
   type RangeClaimRequest,
 } from "./statement.js";
 import {
@@ -91,7 +100,7 @@ export type GraphEquality = readonly GraphEqualityRef[];
 interface StatementShape {
   readonly nQuads: number;
   readonly twinCount: number;
-  readonly numericDecl: readonly { pointer: string }[];
+  readonly numericDecl: readonly NumericDeclarationEntry[];
   readonly mode: ProofMode;
 }
 
@@ -107,7 +116,9 @@ function resolveEqualityRef(ref: GraphEqualityRef, shapes: readonly StatementSha
     // The link secret is the sole committed message, at slot L = nQuads + twinCount.
     return { statement: ref.statement, messageIndex: shape.nQuads + shape.twinCount };
   }
-  const declIndex = declIndexFor(shape.numericDecl, ref.pointer, "equality");
+  // predicateSafe only: equating revocation ids across credentials is a registry-scoped
+  // linkage claim the link secret already serves, without touching a permanent identifier.
+  const declIndex = predicateSafeDeclIndexFor(shape.numericDecl, ref.pointer, "equality");
   return { statement: ref.statement, messageIndex: shape.nQuads + declIndex };
 }
 
@@ -153,6 +164,8 @@ export interface GraphCredentialInput {
   readonly selectivePointers?: readonly string[];
   readonly rangeClaims?: readonly RangeClaimRequest[];
   readonly membershipClaims?: readonly MembershipClaimRequest[];
+  /** Non-revocation gates (FINDINGS §18): claim plus witness sidecar, one per registry. */
+  readonly nonRevocationClaims?: readonly NonRevocationProveInput[];
   /** Required iff this credential was holder-bound. */
   readonly holderBinding?: Pick<HolderBinding, "linkSecret" | "secretProverBlind">;
 }
@@ -213,10 +226,13 @@ export async function presentGraph(
   const wireRangeClaims: StatementRangeClaim[] = [];
   const memberships: SetMembershipPredicate[] = [];
   const wireMembershipClaims: StatementMembershipClaim[] = [];
+  const accumulatorMemberships: AccumulatorMembershipPredicate[] = [];
+  const wireAccumulatorClaims: StatementAccumulatorClaim[] = [];
+  const witnessesByStatement = new Map<number, Map<number, PointG1>>();
   for (const [i, input] of options.credentials.entries()) {
     const prep = preps[i]!;
     for (const claim of input.rangeClaims ?? []) {
-      const declIndex = declIndexFor(prep.numericDecl, claim.pointer, "range claim");
+      const declIndex = predicateSafeDeclIndexFor(prep.numericDecl, claim.pointer, "range claim");
       predicates.push({
         statement: i,
         messageIndex: prep.nQuads + declIndex,
@@ -235,12 +251,49 @@ export async function presentGraph(
       });
     }
     for (const claim of input.membershipClaims ?? []) {
-      const declIndex = declIndexFor(prep.numericDecl, claim.pointer, "membership claim");
+      const declIndex = predicateSafeDeclIndexFor(
+        prep.numericDecl,
+        claim.pointer,
+        "membership claim",
+      );
       memberships.push({ statement: i, messageIndex: prep.nQuads + declIndex, params: claim.params });
       wireMembershipClaims.push({
         statement: i,
         declIndex,
         paramsHash: membershipParamsHash(suite, claim.params),
+      });
+    }
+    for (const claim of input.nonRevocationClaims ?? []) {
+      const declIndex = nonRevocationDeclIndexFor(
+        prep.numericDecl,
+        claim.pointer,
+        "non-revocation claim",
+      );
+      const messageIndex = prep.nQuads + declIndex;
+      // One witness per id slot: the proofs-layer sidecar is keyed by message index, so a
+      // second registry gating the same id has nowhere to put its witness.
+      const witnesses = witnessesByStatement.get(i) ?? new Map<number, PointG1>();
+      if (witnesses.has(messageIndex)) {
+        throw new Error(
+          `non-revocation claim: "${claim.pointer}" on credential ${i} already has a ` +
+            `claim — one registry gate per revocation id`,
+        );
+      }
+      witnesses.set(messageIndex, claim.witness);
+      witnessesByStatement.set(i, witnesses);
+      accumulatorMemberships.push({
+        statement: i,
+        messageIndex,
+        params: claim.params,
+        accumulator: claim.accumulator,
+        epoch: claim.epoch,
+      });
+      wireAccumulatorClaims.push({
+        statement: i,
+        declIndex,
+        paramsHash: accumulatorParamsHash(claim.params),
+        accumulator: claim.accumulator.toBytes(),
+        epoch: claim.epoch,
       });
     }
   }
@@ -251,11 +304,20 @@ export async function presentGraph(
   });
   const wireEqualities: WireEquality[] = equalities.map(toWireEquality);
 
-  const spec: PresentationSpec = { equalities: constraints, predicates, memberships };
+  const spec: PresentationSpec = {
+    equalities: constraints,
+    predicates,
+    memberships,
+    accumulatorMemberships,
+  };
+  const statements: CredentialStatement[] = preps.map((prep, i) => {
+    const witnesses = witnessesByStatement.get(i);
+    return witnesses ? { ...prep.statement, accumulatorWitnesses: witnesses } : prep.statement;
+  });
   const presentationHeader = encodePresentationHeader(options.challenge, options.domain ?? "");
   const presentation = provePresentation(
     suite,
-    preps.map((p) => p.statement),
+    statements,
     spec,
     presentationHeader,
     options.proveOptions ?? {},
@@ -278,6 +340,7 @@ export async function presentGraph(
     rangeClaims: wireRangeClaims,
     membershipClaims: wireMembershipClaims,
     equalities: wireEqualities,
+    accumulatorClaims: wireAccumulatorClaims,
   });
 
   const vpProof: Record<string, unknown> = {
@@ -309,6 +372,9 @@ export interface ExpectedRangeClaim extends RangeClaimRequest {
 export interface ExpectedMembershipClaim extends MembershipClaimRequest {
   readonly statement: number;
 }
+export interface ExpectedNonRevocationClaim extends NonRevocationClaimRequest {
+  readonly statement: number;
+}
 
 export interface VerifyGraphOptions {
   readonly verifiablePresentation: Readonly<Record<string, unknown>>;
@@ -325,6 +391,11 @@ export interface VerifyGraphOptions {
   /** Statement-major, matched positionally to the proof's own claim lists (§11). */
   readonly expectedRangeClaims?: readonly ExpectedRangeClaim[];
   readonly expectedMembershipClaims?: readonly ExpectedMembershipClaim[];
+  /**
+   * The non-revocation gates this verifier requires, with params/accumulator/epoch from its
+   * OWN registry fetch — never from the wire, and never from the prover.
+   */
+  readonly expectedNonRevocationClaims?: readonly ExpectedNonRevocationClaim[];
   /** The equalities this verifier required; must match the proof's exactly. */
   readonly expectedEqualities?: readonly GraphEquality[];
   readonly documentLoader?: DocumentLoader;
@@ -417,6 +488,7 @@ async function verifyGraphInner(options: VerifyGraphOptions): Promise<VerifyGrap
 
   const expectedRange = options.expectedRangeClaims ?? [];
   const expectedMembership = options.expectedMembershipClaims ?? [];
+  const expectedNonRevocation = options.expectedNonRevocationClaims ?? [];
   const expectedEqualities = options.expectedEqualities ?? [];
 
   // Claim lists: same length, same statement-major order, each field matched (§11).
@@ -469,6 +541,39 @@ async function verifyGraphInner(options: VerifyGraphOptions): Promise<VerifyGrap
     return { statement: got.statement, messageIndex: shape.nQuads + got.declIndex, params: want.params };
   });
 
+  if (wire.accumulatorClaims.length !== expectedNonRevocation.length) {
+    throw new Error(
+      `verify: proof carries ${wire.accumulatorClaims.length} non-revocation claims, ` +
+        `verifier expected ${expectedNonRevocation.length}`,
+    );
+  }
+  const accumulatorMemberships: AccumulatorMembershipPredicate[] = expectedNonRevocation.map(
+    (want, k) => {
+      const got = wire.accumulatorClaims[k]!;
+      if (got.statement !== want.statement) {
+        throw new Error(
+          `verify: non-revocation claim ${k} is on statement ${got.statement}, expected ` +
+            `${want.statement}`,
+        );
+      }
+      const shape = shapes[got.statement];
+      if (!shape) throw new Error(`verify: non-revocation claim ${k} names an unknown statement`);
+      assertNonRevocationClaimMatches(
+        got,
+        want,
+        shape.numericDecl,
+        `statement ${got.statement} non-revocation claim ${k}`,
+      );
+      return {
+        statement: got.statement,
+        messageIndex: shape.nQuads + got.declIndex,
+        params: want.params,
+        accumulator: want.accumulator,
+        epoch: want.epoch,
+      };
+    },
+  );
+
   // Equalities: the proof's symbolic list must be exactly what the verifier required.
   const wireEqualities = wire.equalities.map(fromWireEquality);
   if (wireEqualities.length !== expectedEqualities.length) {
@@ -486,7 +591,12 @@ async function verifyGraphInner(options: VerifyGraphOptions): Promise<VerifyGrap
     equality.map((ref) => resolveEqualityRef(ref, shapes)),
   );
 
-  const spec: PresentationSpec = { equalities: constraints, predicates, memberships };
+  const spec: PresentationSpec = {
+    equalities: constraints,
+    predicates,
+    memberships,
+    accumulatorMemberships,
+  };
   const presentationHeader = encodePresentationHeader(options.challenge, options.domain ?? "");
   const presentation = octetsToPresentation(suite, wire.presentationOctets);
   const verified = verifyPresentation(suite, presentation, descriptors, spec, presentationHeader);

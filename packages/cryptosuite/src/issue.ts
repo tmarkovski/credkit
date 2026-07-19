@@ -13,6 +13,7 @@
 import {
   blindSign,
   blindVerify,
+  calculateRandomScalars,
   commit,
   committedMessageCount,
   octetsToSignature,
@@ -58,6 +59,37 @@ export function createHolderBinding(options: CreateHolderBindingOptions = {}): H
   const commitOptions = options.randomScalars ? { randomScalars: options.randomScalars } : {};
   const { commitmentWithProof, secretProverBlind } = commit(suite, [linkSecret], commitOptions);
   return { linkSecret, commitmentWithProof, secretProverBlind };
+}
+
+export interface CreateRevocationIdOptions {
+  readonly cryptosuite?: CryptosuiteName;
+  /** Test hook for deterministic ids. */
+  readonly randomScalars?: RandomScalars;
+}
+
+export interface RevocationId {
+  /** The id scalar — what the registry accumulates and the witness covers. */
+  readonly revocationId: Scalar;
+  /**
+   * The canonical lexical form for the credential document (an `frScalar`-declared
+   * xsd:integer literal, e.g. at /credentialStatus/revocationId). The twin recomputed from
+   * this literal IS `revocationId`; any other spelling fails the encoder.
+   */
+  readonly lexical: string;
+}
+
+/**
+ * Issuer side of revocable issuance: draw the revocation id (FINDINGS §18 — a random Fr
+ * scalar, signed as a hidden `frScalar` twin, never disclosed). The registry-side half —
+ * `issueMembershipWitness` under the registry secret — is the operator's call, not this
+ * layer's: the witness mutates every revocation epoch and never enters the signed document.
+ */
+export function createRevocationId(options: CreateRevocationIdOptions = {}): RevocationId {
+  const suite = ciphersuiteFor(options.cryptosuite ?? CRYPTOSUITE_SHA);
+  const revocationId = options.randomScalars
+    ? options.randomScalars(1)[0]!
+    : calculateRandomScalars(suite, 1)[0]!;
+  return { revocationId, lexical: revocationId.toString(10) };
 }
 
 export interface IssueOptions {
@@ -217,6 +249,7 @@ export async function reproveBase(options: {
   labelMap: Map<string, string>;
   nonMandatory: string[];
   messages: MessageInput[];
+  twins: ReturnType<typeof computeTwins>;
 }> {
   const credential = options.verifiableCredential as Record<string, unknown>;
   const proof = credential["proof"] as Record<string, unknown> | undefined;
@@ -275,6 +308,7 @@ export async function reproveBase(options: {
     labelMap,
     nonMandatory,
     messages,
+    twins,
   };
 }
 

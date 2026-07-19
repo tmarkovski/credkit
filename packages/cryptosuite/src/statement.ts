@@ -20,7 +20,9 @@ import {
   type G2Point,
   type MessageDisclosure,
   type MessageInput,
+  type PointG1,
 } from "@credkit/bbs";
+import { accumulatorParamsToOctets, type AccumulatorParams } from "@credkit/accumulator";
 import type { CredentialStatement, StatementDescriptor } from "@credkit/proofs";
 import {
   rangeParamsToOctets,
@@ -37,10 +39,12 @@ import {
   type DocumentLoader,
 } from "@digitalbazaar/di-sd-primitives";
 import { assembleBbsHeader, numericDeclHash, type NumericDeclarationEntry } from "./decl.js";
+import { getEncoder } from "./encoders.js";
 import { hashMandatoryQuads, hashProofConfig } from "./pipeline.js";
 import { bytesEqual, reproveBase, type HolderBinding } from "./issue.js";
 import {
   parseBaseProofValue,
+  type AccumulatorClaim,
   type MembershipClaim,
   type ProofMode,
   type RangeClaim,
@@ -65,6 +69,33 @@ export interface RangeClaimRequest {
 export interface MembershipClaimRequest {
   readonly pointer: string;
   readonly params: SetMembershipParams;
+}
+
+/**
+ * A non-revocation claim: the credential's revocation id (an `frScalar` twin, FINDINGS §18)
+ * has a valid membership witness for the stated accumulator value. The verifier fills
+ * every field from its OWN registry fetch — params is the registry trust anchor, and a
+ * stale or fabricated accumulator/epoch fails the merged challenge, never a policy check.
+ */
+export interface NonRevocationClaimRequest {
+  /** Must appear in the credential's numeric declaration with the `frScalar` encoder. */
+  readonly pointer: string;
+  /** The registry's public key — same trust-anchor class as the issuer key. */
+  readonly params: AccumulatorParams;
+  /** The accumulator value being proven against. */
+  readonly accumulator: PointG1;
+  /** The registry epoch `accumulator` belongs to. */
+  readonly epoch: number;
+}
+
+/** The prover's side of a non-revocation claim: the claim plus the witness sidecar. */
+export interface NonRevocationProveInput extends NonRevocationClaimRequest {
+  /**
+   * The current membership witness for this credential's revocation id. Sidecar state —
+   * never part of the signed credential (it mutates every revocation epoch); keep it
+   * current via @credkit/accumulator's update path before presenting.
+   */
+  readonly witness: PointG1;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +136,10 @@ export function membershipParamsHash(
   params: SetMembershipParams,
 ): Uint8Array {
   return sha256(setParamsToOctets(suite, params));
+}
+
+export function accumulatorParamsHash(params: AccumulatorParams): Uint8Array {
+  return sha256(accumulatorParamsToOctets(params));
 }
 
 export function compressLabelMap(labelMap: ReadonlyMap<string, string>): Map<number, number> {
@@ -162,6 +197,50 @@ export function declIndexFor(
     throw new Error(
       `${what}: "${pointer}" is not in the credential's numeric declaration — the issuer ` +
         `never signed a twin for it`,
+    );
+  }
+  return index;
+}
+
+/**
+ * `declIndexFor` for range/set predicates and equalities: additionally refuses twins whose
+ * encoder is not predicate-safe. Enforced on BOTH sides — a prover must not answer such a
+ * claim (a range claim over a revocation id is a bit-probe of a permanent identifier, and
+ * an equality over one is a registry-scoped linkage the link secret already serves), and a
+ * verifier must not accept one.
+ */
+export function predicateSafeDeclIndexFor(
+  decl: readonly NumericDeclarationEntry[],
+  pointer: string,
+  what: string,
+): number {
+  const index = declIndexFor(decl, pointer, what);
+  const encoder = getEncoder(decl[index]!.encoder);
+  if (!encoder.predicateSafe) {
+    throw new Error(
+      `${what}: "${pointer}" is encoded with "${encoder.id}", which does not admit ` +
+        `predicates or equalities — its values are identifiers, not quantities`,
+    );
+  }
+  return index;
+}
+
+/**
+ * The non-revocation counterpart: the twin MUST be `frScalar`-encoded. Registry ids are
+ * full-entropy scalars by construction; gating on a low-entropy quantity twin would invite
+ * registries whose members are guessable.
+ */
+export function nonRevocationDeclIndexFor(
+  decl: readonly NumericDeclarationEntry[],
+  pointer: string,
+  what: string,
+): number {
+  const index = declIndexFor(decl, pointer, what);
+  const encoder = decl[index]!.encoder;
+  if (encoder !== "frScalar") {
+    throw new Error(
+      `${what}: "${pointer}" is encoded with "${encoder}" — non-revocation claims bind ` +
+        `only to frScalar revocation ids`,
     );
   }
   return index;
@@ -238,6 +317,19 @@ export async function prepareStatement(
   const mandatoryGroup = groups["mandatory"]!;
   const selectiveGroup = groups["selective"]!;
   const combinedGroup = groups["combined"]!;
+
+  // An identifier twin (not predicate-safe — e.g. a revocation id) must never have its
+  // source quad disclosed: revealing it once is a permanent correlation handle. Holder-
+  // protective and prove-side only; the quad is the HOLDER's secret, not the verifier's.
+  for (const [j, entry] of numericDecl.entries()) {
+    if (getEncoder(entry.encoder).predicateSafe) continue;
+    if (selectiveGroup.matching.has(base.twins[j]!.quadIndex)) {
+      throw new Error(
+        `derive: the selective pointers disclose "${entry.pointer}" — an identifier ` +
+          `twin's source quad is never disclosable; select narrower pointers`,
+      );
+    }
+  }
 
   // Mandatory indexes are relative to the combined revealed quads; selective indexes are
   // relative to the non-mandatory messages, i.e. message space. Both derive from the same
@@ -426,13 +518,16 @@ export async function reconstructStatement(
 export function assertRangeClaimMatches(
   wire: RangeClaim,
   want: RangeClaimRequest,
-  decl: readonly { pointer: string }[],
+  decl: readonly NumericDeclarationEntry[],
   where: string,
 ): void {
   const entry = decl[wire.declIndex];
   if (entry === undefined) throw new Error(`verify: ${where} references an undeclared twin`);
   if (entry.pointer !== want.pointer) {
     throw new Error(`verify: ${where} is over "${entry.pointer}", expected "${want.pointer}"`);
+  }
+  if (!getEncoder(entry.encoder).predicateSafe) {
+    throw new Error(`verify: ${where} is over an identifier twin, which admits no predicates`);
   }
   if (wire.kind !== want.kind || wire.bound !== want.bound || wire.digits !== want.digits) {
     throw new Error(`verify: ${where} does not match the expected predicate`);
@@ -446,7 +541,7 @@ export function assertMembershipClaimMatches(
   suite: Parameters<typeof setParamsToOctets>[0],
   wire: MembershipClaim,
   want: MembershipClaimRequest,
-  decl: readonly { pointer: string }[],
+  decl: readonly NumericDeclarationEntry[],
   where: string,
 ): void {
   const entry = decl[wire.declIndex];
@@ -454,7 +549,48 @@ export function assertMembershipClaimMatches(
   if (entry.pointer !== want.pointer) {
     throw new Error(`verify: ${where} is over "${entry.pointer}", expected "${want.pointer}"`);
   }
+  if (!getEncoder(entry.encoder).predicateSafe) {
+    throw new Error(`verify: ${where} is over an identifier twin, which admits no predicates`);
+  }
   if (!bytesEqual(wire.paramsHash, membershipParamsHash(suite, want.params))) {
     throw new Error(`verify: ${where} used a different set than this verifier's`);
+  }
+}
+
+/**
+ * Every wire field is cross-checked against the verifier's own registry state before the
+ * predicate is built — from the VERIFIER's values, never the wire's. The checks buy precise
+ * errors ("proven against epoch 3, verifier expects 5" is a sync problem, not an attack);
+ * soundness never depends on them, because the proofs-layer transcript absorbs the
+ * verifier-supplied params, accumulator, and epoch directly.
+ */
+export function assertNonRevocationClaimMatches(
+  wire: AccumulatorClaim,
+  want: NonRevocationClaimRequest,
+  decl: readonly NumericDeclarationEntry[],
+  where: string,
+): void {
+  const entry = decl[wire.declIndex];
+  if (entry === undefined) throw new Error(`verify: ${where} references an undeclared twin`);
+  if (entry.pointer !== want.pointer) {
+    throw new Error(`verify: ${where} is over "${entry.pointer}", expected "${want.pointer}"`);
+  }
+  if (entry.encoder !== "frScalar") {
+    throw new Error(`verify: ${where} is not over an frScalar revocation id`);
+  }
+  if (wire.epoch !== want.epoch) {
+    throw new Error(
+      `verify: ${where} was proven against epoch ${wire.epoch}, this verifier expects ` +
+        `${want.epoch} — the holder needs a registry sync`,
+    );
+  }
+  if (!bytesEqual(wire.paramsHash, accumulatorParamsHash(want.params))) {
+    throw new Error(`verify: ${where} used a different registry key than this verifier's`);
+  }
+  if (!bytesEqual(wire.accumulator, want.accumulator.toBytes())) {
+    throw new Error(
+      `verify: ${where} was proven against a different accumulator value than this ` +
+        `verifier's — the holder needs a registry sync`,
+    );
   }
 }

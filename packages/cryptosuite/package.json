@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@credkit/accumulator": "workspace:*",
     "@credkit/bbs": "workspace:*",
     "@credkit/proofs": "workspace:*",
     "@credkit/range": "workspace:*",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@digitalbazaar/bbs-2023-cryptosuite": "^2.0.1",
+    "@noble/curves": "^2.2.0",
     "@types/node": "^22.0.0"
   }
 }

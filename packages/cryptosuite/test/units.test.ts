@@ -4,8 +4,9 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createHmac } from "@digitalbazaar/di-sd-primitives";
 import { bytesToHex, utf8 } from "@credkit/bbs";
+import { bls12_381 } from "@noble/curves/bls12-381.js";
 import { decodeCbor, encodeCbor } from "../src/cbor.js";
-import { getEncoder, knownEncoderIds } from "../src/encoders.js";
+import { BLS12_381_FR_ORDER, getEncoder, knownEncoderIds } from "../src/encoders.js";
 import {
   assembleBbsHeader,
   numericDeclHash,
@@ -61,7 +62,31 @@ describe("numeric encoders", () => {
 
   it("unknown encoder ids are rejected, not defaulted", () => {
     expect(() => getEncoder("float64")).toThrow(/unknown id/);
-    expect(knownEncoderIds()).toEqual(["date1900", "uint64"]);
+    expect(knownEncoderIds()).toEqual(["date1900", "uint64", "frScalar"]);
+  });
+
+  it("frScalar accepts only canonical integers below the Fr order", () => {
+    const fr = getEncoder("frScalar");
+    expect(fr.encode("0")).toBe(0n);
+    expect(fr.encode(fr.maxValue.toString(10))).toBe(fr.maxValue);
+    for (const bad of ["05", "+5", "-5", "0x1f", "1e3", "", " 5"]) {
+      expect(() => fr.encode(bad)).toThrow(/canonical/);
+    }
+    expect(() => fr.encode((fr.maxValue + 1n).toString(10))).toThrow(/Fr order/);
+  });
+
+  it("frScalar pins the BLS12-381 Fr order against the curve library", () => {
+    expect(BLS12_381_FR_ORDER).toBe(bls12_381.fields.Fr.ORDER);
+    expect(getEncoder("frScalar").maxValue).toBe(BLS12_381_FR_ORDER - 1n);
+  });
+
+  it("only identifier encoders refuse predicates — the flag is per-encoder, not per-claim", () => {
+    expect(getEncoder("date1900").predicateSafe).toBe(true);
+    expect(getEncoder("uint64").predicateSafe).toBe(true);
+    expect(getEncoder("frScalar").predicateSafe).toBe(false);
+    // The predicate-safe encoders keep §12's modular guarantee intact.
+    expect(getEncoder("date1900").maxValue < 1n << 64n).toBe(true);
+    expect(getEncoder("uint64").maxValue < 1n << 64n).toBe(true);
   });
 });
 

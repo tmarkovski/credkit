@@ -929,3 +929,48 @@ revocation pattern; revoked holder's update fails; cross-epoch composition ≡ e
 adversarial tests (forged y, stale V, revoked witness, identity C', response-binding
 tampering), and golden vectors of our own for the new wire. Structural cross-check against
 docknetwork's `vb_accumulator` only — never bytes (§5 discipline).
+
+## 19. Revocation at the cryptosuite layer (2026-07-19, same day, follow-on pass)
+
+§18 ended at `packages/proofs`; this pass carries the non-revocation gate up through
+`packages/cryptosuite` so a JSON-LD credential can be revocable. The shape of the answer:
+nothing new below the document layer, four policies above it.
+
+**The id is a twin, not a new message class.** The revocation id lives in the document at
+`/credentialStatus/revocationId` as a canonical decimal xsd:integer literal, declared with a
+new `frScalar` encoder (full Fr range — the id is an issuer-assigned uniform scalar,
+`createRevocationId`). The existing twin pipeline signs it, hides it, and recomputes it on
+both sides; no new proof modes, no new envelope prefixes, no descriptor changes. The
+registry reference rides the same status object, hideable and harmless; the status NODE
+stays blank so no per-credential IRI exists in the open.
+
+**`predicateSafe` splits the encoder registry.** §12's modular range guarantee requires
+honest values far below 2^64; `frScalar` values are 255-bit identifiers. But the real reason
+the flag exists is the other direction: a range claim over a revocation id is a bit-probe —
+a verifier could binary-search a permanent identifier across presentations. So `frScalar` is
+`predicateSafe: false`, and range claims, set-membership claims, AND pointer equalities over
+such twins are refused on both the prove and verify sides (equating two revocation ids is a
+registry-scoped linkage claim; the link secret is the linkage mechanism, §8). The same
+polarity guards issuance direction too: non-revocation claims bind ONLY to `frScalar` twins,
+so nobody gates a registry on a guessable quantity.
+
+**The id's quad is never disclosable.** Twins were already never-disclosed as messages; the
+SOURCE quad of a predicate-safe twin stays legitimately disclosable (revealing a birth date
+is a choice). An identifier twin's source quad is not: revealing y once is a permanent
+correlator, so `prepareStatement` refuses any selective pointer whose selection includes it
+— including subtree selections like `/credentialStatus`. Holder-protective, prove-side only.
+
+**The wire carries cross-checks, not inputs.** The VP presentation envelope (0xd9 0x63 0x08)
+gains a fifth section: `[statement, declIndex, paramsHash, accumulator, epoch]` per gate.
+Every field is compared against the verifier's OWN registry fetch (the same never-from-the-
+wire rule as keys and challenges) — they exist so a lagging holder gets "proven against
+epoch 3, verifier expects 5", a sync diagnosis, instead of a bare proof failure. Soundness
+never touches them: the proofs-layer transcript absorbs the verifier-supplied params, value,
+and epoch directly (§18). The witness is a `presentGraph` input and appears nowhere in any
+envelope — sidecar at rest (wallet-side, beside `secretProverBlind`), sidecar in flight.
+Graph path only: `deriveProof` keeps its N=1 scope and cannot express a gate.
+
+**What this deliberately does not decide:** the status object's vocabulary (type IRI,
+registry discovery, update-feed format) is the consuming application's; the cryptosuite
+binds a pointer and an encoder, nothing else. Registry operation (who holds α, epoch
+cadence, Ω hosting) was §18's scope and stays there.

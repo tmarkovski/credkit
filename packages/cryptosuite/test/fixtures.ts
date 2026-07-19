@@ -33,6 +33,14 @@ export const LICENCE_CONTEXT = {
       "@id": "https://schema.org/postalCode",
       "@type": "http://www.w3.org/2001/XMLSchema#integer",
     },
+    registry: {
+      "@id": "https://example.org/vocab#revocationRegistry",
+      "@type": "@id",
+    },
+    revocationId: {
+      "@id": "https://example.org/vocab#revocationId",
+      "@type": "http://www.w3.org/2001/XMLSchema#integer",
+    },
   },
 };
 
@@ -78,6 +86,28 @@ export const DECL = [
   { pointer: "/credentialSubject/stateFips", encoder: "uint64" },
   { pointer: "/credentialSubject/postalCode", encoder: "uint64" },
 ];
+
+export const REVOCATION_POINTER = "/credentialStatus/revocationId";
+
+export const REVOCABLE_DECL = [
+  ...DECL,
+  { pointer: REVOCATION_POINTER, encoder: "frScalar" },
+];
+
+/**
+ * The licence plus a credentialStatus: the registry reference (issuer-wide, harmless) and
+ * the revocation id (an frScalar twin — hidden, never disclosable). The status node stays
+ * blank — an `id` IRI on it would be a per-credential correlation handle in the open.
+ */
+export function revocableLicence(revocationIdLexical: string): Record<string, unknown> {
+  return {
+    ...licence(),
+    credentialStatus: {
+      registry: "https://registry.example/dmv/1",
+      revocationId: revocationIdLexical,
+    },
+  };
+}
 
 /** Days since 1900-01-01 for a calendar date — real arithmetic, never day-count guesses. */
 export function daysSince1900(year: number, month: number, day: number): bigint {
