@@ -830,3 +830,102 @@ different set (or none) fails the count/structure check before any curve math.
 test is two holder-bound credentials from two issuers, one link-secret equality, verified under
 one challenge with neither secret nor any hidden value on the wire — the README's last gap,
 closed.
+
+## 18. Revocation: VB positive accumulator, operated additions-static (2026-07-19, design record — written before code)
+
+Revocation was researched against the stack's standing constraints: non-correlation, minimum
+disclosure, pure TS on `@noble/curves` (§9), no SNARKs (§4). Bitstring Status List fails on
+arrival — the `statusListIndex` is a persistent per-credential correlator, which un-does BBS
+unlinkability by construction; CRSet-style Bloom cascades fix issuer phone-home but the
+verifier still learns a credential id; SNARK-over-Merkle is already excluded. What fits is a
+bilinear accumulator with a ZK membership proof bound to the credential — the same pairing
+toolkit as everything else in this repo. No pure-TS implementation exists anywhere
+(the only JS option is docknetwork's WASM build), so this is a build, like §6 was.
+
+**The construction: VB positive accumulator (ePrint 2020/777), operated the way KB/ALLOSAUR
+operate it.** Four decisions, each load-bearing:
+
+1. **Positive only — non-membership witnesses are unrepresentable.** The Biryukov–Udovenko–
+   Vitto cryptanalysis (ePrint 2020/598) recovers the trapdoor α from ~O(log p) pooled
+   *non-membership* witnesses; VB's defense is the elaborate secret-initialization ceremony of
+   its universal variant. A revocation registry only ever needs membership ("still in the
+   unrevoked set"; revoke = remove), so we never issue a non-membership witness and the whole
+   attack surface plus the init ceremony disappear. `V0 = u0·P` for secret random `u0`.
+2. **Additions never touch the accumulator.** The issuer can compute `C = (1/(y+α))·V` for
+   any `y` without changing `V` (KB Construction 1, ePrint 2021/638; ALLOSAUR adopts the
+   same). Issuance therefore publishes nothing, forces no holder updates, and join events are
+   invisible (join-revoke unlinkability). This also dodges a real attack: ALLOSAUR §3.1
+   (ePrint 2022/1362) extracts `α^i·V0` powers from one epoch's public batch-ADDITION update
+   data and forges a valid membership witness for any added element, offline. Deletion-side
+   data admits no analogous forgery. Rule: **no addition-Ω exists, ever.**
+3. **Deletion-only Ω epochs.** Revoking `y`: `V' = (1/(y+α))·V`. Per epoch the registry
+   publishes `(V', removed ids, Ω)` where Ω is the update polynomial's coefficients blinded
+   as `c_i·V` — never raw coefficients, which leak α. Holders catch up over any number of
+   missed epochs offline: per epoch the scalar `d_D(y) = ∏(y_del − y)`, one combined MSM,
+   one field inversion — O(total revocations), which is the Camacho–Hevia lower bound for
+   any non-interactive scheme. A revoked holder hits `d_D(y) = 0`: the update fails, which
+   IS the revocation semantics. The published data is identical for every holder — CDN-able,
+   no per-holder query, no correlation channel. (Dock production feedback in the paper:
+   10–20M entries, ~1600 changes/day ⇒ ~99 KB/day; a year offline ⇒ ~36 MB, 80 s in Rust.)
+4. **The CDH proof, not the VB paper's §7 protocol.** The witness is a weak-BB signature on
+   `y` under key `Q̃ = α·P̃` with basis `V`, so membership is proven by the weak-BB PoK
+   (Camenisch–Drijvers–Hajny; docknetwork `proofs_cdh.rs`), which supersedes the paper's own
+   protocol (extra generators, prover GT arithmetic — what anoncreds-v2 still ships):
+
+       prover:  r ← Fr*;  C' = r·C;  C̄ = r·V − y·C'   (= α·C' when the witness is valid)
+                T = r₁·V − r₂·C'   with r₂ := the BBS slot's m~   ← the binding
+                s_r = r₁ + c·r     (s_y = r₂ + c·y ≡ the BBS response — never on the wire)
+       wire:    C' ‖ C̄ ‖ s_r  = 128 octets
+       verify:  C' ≠ identity;  T = s_r·V − s_y·C' − c·C̄  with s_y read from the BBS proof;
+                e(C̄, P̃) = e(C', Q̃)   — one 2-pairing product, challenge-independent
+
+   Prover: ~5 G1 mults, zero pairings, zero GT arithmetic — cheaper than a single CCS digit
+   proof. Verifier: one extra Miller-loop pair via `pairingBatch`. Soundness: the pairing
+   check forces `C̄ = α·C'`; Schnorr extraction gives `(r, y)` with `C̄ = r·V − y·C'`, so
+   `(y+α)·C' = r·V` and `r⁻¹·C'` is a valid witness (`r ≠ 0` since `C' ≠ identity`).
+
+**The binding is §13's response equality, via the partial-proof pattern.** The revocation id
+`y` is a hidden NUMERIC message in the BBS credential (issuer-assigned random Fr scalar,
+never disclosed). The accumulator proof draws no blinding for `y` — it uses the slot's m~,
+so under the merged challenge its y-response equals the BBS response scalar and is therefore
+OMITTED from the wire; the verifier supplies `m^` when reconstructing T. An accumulator
+proof is thereby unrepresentable without a credential statement to bind to — which is also
+the mitigation for two residual weaknesses: the ALLOSAUR §3.1 concern (a forged witness for
+`y` is useless without a BBS signature over `y`) and the non-adaptive soundness of
+additions-static (the issuer assigns `y`; nobody adaptively chooses one). **The accumulator
+is a revocation gate on a credential, never a standalone authenticator.**
+
+**Freshness is the verifier's statement.** The predicate both sides pass includes the
+accumulator value `V` and an epoch identifier; the transcript absorbs them with the
+accumulator public key. The verifier states the `V` it accepts (fetched from the registry
+itself); a holder proving against a stale or fabricated `V` fails the challenge. How stale a
+`V` a verifier tolerates is policy, same as status-list caching today. Holders should sync
+before presenting — presenting against an old epoch's `V` (where the verifier accepts a
+window) would fingerprint the holder's last sync time.
+
+**What ALLOSAUR is, and why not now.** Same accumulator, same proof; its contributions are
+threshold MPC managers (α secret-shared), oblivious O(√m) witness updates via secret-shared
+polynomial evaluation, and the long-term signature that patches §3.1 for standalone use. All
+three solve problems this stack doesn't have at current scale (our update data is already
+non-correlating because it's static and universal; our §3.1 patch is the BBS binding).
+Because the accumulator value, witness, and proof are identical, ALLOSAUR remains a pure
+upgrade to the update plane — nothing in the credential, wire, or verifier changes. Even
+anoncreds-v2-rs, whose README cites ALLOSAUR, ships single-manager vb20.
+
+**Layering.** New package `@credkit/accumulator` (registry lifecycle: keygen, witness
+issuance, revocation epochs, holder updates, the CDH PoK in the three-phase
+init/finalize/verifyInit shape — no self-contained verify, no internal challenge;
+`packages/proofs` owns the binding, same rule as §12/§13). `packages/proofs` gains
+`AccumulatorMembershipPredicate` — named for the mechanism; "revocation" is the
+cryptosuite-layer policy that revoke = remove — plus a fourth wire section and PROTOCOL_ID
+V4. Cryptosuite integration (`credentialStatus`, witness sidecar conventions) is a
+follow-on pass: the witness is NOT part of the signed credential (it mutates on every
+revocation epoch); it travels beside it.
+
+**Test strategy: same situation as §6, worse than §3.** No fixtures exist anywhere — there
+is no spec, and the only implementations are Rust/Go/Python with incompatible transcripts.
+So: algebraic property tests (updated witness ≡ freshly issued witness after every
+revocation pattern; revoked holder's update fails; cross-epoch composition ≡ epoch-by-epoch),
+adversarial tests (forged y, stale V, revoked witness, identity C', response-binding
+tampering), and golden vectors of our own for the new wire. Structural cross-check against
+docknetwork's `vb_accumulator` only — never bytes (§5 discipline).

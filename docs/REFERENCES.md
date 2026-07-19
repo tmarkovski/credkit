@@ -87,10 +87,22 @@ Worth reading, roughly in the order you'll need it:
 Its `Cargo.toml` is informative on its own: `blsful`, `bulletproofs-bls`, `merlin`. No `bbs`
 crate — BBS is in-tree.
 
-### `docknetwork/crypto` — for `packages/proofs` and `packages/range`
-Rust. Matters later, not now. `schnorr_pok` and `proof_system` are the composite-proof
+### `docknetwork/crypto` — for `packages/proofs`, `packages/range`, and `packages/accumulator`
+Rust. `schnorr_pok` and `proof_system` are the composite-proof
 architecture; `legogroth16` and `merlin` are the modules our earlier SNARK analysis rejected but
 which document the commit-and-prove approach if it ever comes back.
+
+For `packages/accumulator` (FINDINGS §18), the crate that matters is `vb_accumulator`:
+`positive.rs` (the accumulator ops), `witness.rs` (single + batch update API),
+`batch_utils.rs` (the Ω polynomials — port the *math*, our epoch model differs), and
+**`proofs_cdh.rs`** — the modern membership proof; the underlying weak-BB PoK lives in
+`short_group_sig/src/weak_bb_sig_pok_cdh.rs`. Ignore `proofs.rs` (the VB paper's legacy §7
+protocol — extra generators, prover GT arithmetic), `universal.rs` and everything
+non-membership (we never issue non-membership witnesses — FINDINGS §18 point 1), and the
+`keyed_verification` modules (designated-verifier, needs sk at the verifier). Their
+`kb_positive_accumulator` documents the additions-static pattern we adopt, but we realize it
+on the VB positive accumulator directly rather than paying KB's second proof component.
+Structural cross-check only — different transcripts, never bytes.
 
 There's a stale 2023 fork at `tmarkovski/crypto` (0 commits ahead, 98 behind, no original work).
 **Prefer upstream.** The fork is public — don't push anything there.
@@ -109,6 +121,28 @@ never a dependency (see FINDINGS §9).
   only to understand why the SNARK path was rejected (FINDINGS §4).
 - **Merlin transcripts** — not a paper, but read the design notes. The labeled,
   length-prefixed absorption discipline is what `packages/proofs` must copy.
+- **VB accumulator** — Vitto, Biryukov, *Dynamic Universal Accumulators with Batch Update
+  over Bilinear Groups*, [eprint 2020/777](https://eprint.iacr.org/2020/777) (CT-RSA 2022).
+  The accumulator `packages/accumulator` implements — but ONLY the positive variant, and
+  ONLY §2–4 (construction, batch polynomials, public Ω updates). Its §7 ZK protocol is
+  superseded by the CDH proof; its §6 initialization ceremony exists for non-membership
+  witnesses we never issue. Read the production-feedback section for real-world costs.
+- **VB cryptanalysis** — Biryukov, Udovenko, Vitto, [eprint 2020/598](https://eprint.iacr.org/2020/598)
+  (CT-RSA 2021). Why non-membership witnesses are unrepresentable in our design: ~O(log p)
+  pooled non-membership witnesses recover the trapdoor.
+- **KB accumulators** — Karantaidou, Baldimtsi, *Efficient Constructions of Pairing Based
+  Accumulators*, [eprint 2021/638](https://eprint.iacr.org/2021/638) (CSF 2021). Source of
+  the additions-static operational pattern (their Construction 1) and join-revoke
+  unlinkability argument. We take the pattern, not the scheme.
+- **ALLOSAUR** — Jaques, Lodder, Montgomery, [eprint 2022/1362](https://eprint.iacr.org/2022/1362)
+  (AsiaCCS 2024). Read §3.1 first — the attack on VB's public batch-ADDITION update data is
+  why no addition-Ω ever exists in our registry (FINDINGS §18 point 2). The rest is the
+  upgrade path (threshold managers, oblivious O(√m) updates); same accumulator, same proof,
+  so adopting it later changes nothing on the wire. Reference impl:
+  `LF-Decentralized-Trust-labs/agora-allosaurus-rs` (maintained fork of `sam-jaques/allosaurust`).
+- **Batch-update lower bound** — Camacho, Hevia, [eprint 2009/612](https://eprint.iacr.org/2009/612).
+  Why holder update work is Ω(revocations) for ANY non-interactive scheme — the bound that
+  makes "just make updates cheaper" a dead end without ALLOSAUR-style interaction.
 
 ## Dead ends — documented so nobody re-walks them
 

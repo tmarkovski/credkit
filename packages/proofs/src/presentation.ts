@@ -28,6 +28,13 @@
  * response must EQUAL the message's BBS response. The verifier learns "one of the members",
  * never which one.
  *
+ * Accumulator-membership predicates (FINDINGS §18) take the sharing one step further: the
+ * CDH proof consumes the slot's blinding and never emits an element response at all — the
+ * verifier reads the BBS response for the slot when reconstructing the proof's commitment,
+ * so the accumulator statement is unrepresentable without the credential statement it gates.
+ * With a revocation registry (revoke = remove) this is the non-revocation predicate: the
+ * verifier learns "not revoked as of the stated accumulator value", never the id.
+ *
  * NOT interoperable with single-proof BBS: even a one-statement presentation derives its
  * challenge from this package's transcript, not the IETF ProofChallengeCalculate. One code
  * path, uniformly — a special-cased N=1 is exactly the kind of transcript fork that breeds
@@ -88,6 +95,19 @@ import {
   type SetMembershipParams,
   type SetMembershipProof,
 } from "@credkit/range";
+import {
+  accumulatorParamsToOctets,
+  accumulatorProofFinalize,
+  accumulatorProofInit,
+  accumulatorProofToOctets,
+  accumulatorVerifyInit,
+  octetsToAccumulatorProof,
+  type AccumulatorInitParts,
+  type AccumulatorInitState,
+  type AccumulatorMembershipProof,
+  type AccumulatorParams,
+} from "@credkit/accumulator";
+import type { PointG1 } from "@credkit/bbs";
 import { Transcript } from "./transcript.js";
 
 /** One credential the holder is presenting. Prover side — carries the full witness. */
@@ -103,6 +123,13 @@ export interface CredentialStatement {
   readonly secretProverBlind?: Scalar;
   /** Must cover every message index 0..L+M-1 exactly. */
   readonly messageDisclosures: ReadonlyMap<number, MessageDisclosure>;
+  /**
+   * Accumulator membership witnesses, keyed by the MESSAGE-space index of the id slot they
+   * belong to (the revocation-id message, FINDINGS §18). Sidecar state, not part of the
+   * signed credential — keep it current via @credkit/accumulator's update path. Prover-only;
+   * required for every AccumulatorMembershipPredicate that references this statement.
+   */
+  readonly accumulatorWitnesses?: ReadonlyMap<number, PointG1>;
 }
 
 /** The verifier's view of one statement: everything public, nothing witness. */
@@ -157,11 +184,31 @@ export interface SetMembershipPredicate {
   readonly params: SetMembershipParams;
 }
 
+/**
+ * A membership claim over one hidden NUMERIC message against a bilinear accumulator: the
+ * value has a valid membership witness for the stated accumulator value. With a revocation
+ * registry (revoke = remove, FINDINGS §18) this IS the non-revocation predicate. The
+ * verifier learns "not revoked as of this accumulator state" and nothing else. Both sides
+ * pass the identical predicate: the verifier states the accumulator value (and epoch) it
+ * accepts, fetched from the registry itself — never taken from the prover.
+ */
+export interface AccumulatorMembershipPredicate {
+  readonly statement: number;
+  readonly messageIndex: number;
+  /** The registry's public key. Same trust anchor class as the issuer public key. */
+  readonly params: AccumulatorParams;
+  /** The accumulator value being proven against. */
+  readonly accumulator: PointG1;
+  /** The registry epoch `accumulator` belongs to. Bound into the transcript. */
+  readonly epoch: number;
+}
+
 /** What is being claimed about the statements, beyond the signatures themselves. */
 export interface PresentationSpec {
   readonly equalities?: readonly EqualityConstraint[];
   readonly predicates?: readonly RangePredicate[];
   readonly memberships?: readonly SetMembershipPredicate[];
+  readonly accumulatorMemberships?: readonly AccumulatorMembershipPredicate[];
 }
 
 export interface Presentation {
@@ -171,6 +218,8 @@ export interface Presentation {
   readonly rangeProofs: readonly RangeProof[];
   /** One proof per set-membership predicate, in spec order, same merged challenge. */
   readonly membershipProofs: readonly SetMembershipProof[];
+  /** One proof per accumulator-membership predicate, in spec order, same challenge. */
+  readonly accumulatorProofs: readonly AccumulatorMembershipProof[];
   readonly challenge: Scalar;
 }
 
@@ -188,6 +237,8 @@ export interface ProvePresentationOptions {
   readonly predicateRandomScalars?: (predicateIndex: number) => RandomScalars;
   /** Per-membership randomness source, for tests. Same independence rule as statements. */
   readonly membershipRandomScalars?: (membershipIndex: number) => RandomScalars;
+  /** Per-accumulator-proof randomness source, for tests. Same independence rule. */
+  readonly accumulatorRandomScalars?: (accumulatorIndex: number) => RandomScalars;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +263,8 @@ function mergedChallenge(
   predicateParts: readonly RangeInitParts[],
   memberships: readonly SetMembershipPredicate[],
   membershipParts: readonly SetMembershipInitParts[],
+  accumulators: readonly AccumulatorMembershipPredicate[],
+  accumulatorParts: readonly AccumulatorInitParts[],
 ): Scalar {
   const t = new Transcript(suite);
   t.appendBytes("presentation_header", presentationHeader);
@@ -266,6 +319,19 @@ function mergedChallenge(
     t.appendBytes("membership_params", setParamsToOctets(suite, m.params));
     t.appendPoint("V", parts.V);
     t.appendBytes("R", gtToOctets(parts.R));
+  }
+  t.appendNumber("accumulator_membership_count", accumulators.length);
+  for (const [k, a] of accumulators.entries()) {
+    const parts = accumulatorParts[k]!;
+    t.appendNumber("accumulator_membership", k);
+    t.appendNumber("accumulator_statement", a.statement);
+    t.appendNumber("accumulator_message_index", a.messageIndex);
+    t.appendBytes("accumulator_params", accumulatorParamsToOctets(a.params));
+    t.appendPoint("accumulator_value", a.accumulator);
+    t.appendNumber("accumulator_epoch", a.epoch);
+    t.appendPoint("CPrime", parts.CPrime);
+    t.appendPoint("CBar", parts.CBar);
+    t.appendPoint("T", parts.T);
   }
   return t.challenge("presentation_challenge");
 }
@@ -347,6 +413,24 @@ function validateMembership(
   // both the prove and verify paths.
 }
 
+function validateAccumulatorMembership(
+  predicate: AccumulatorMembershipPredicate,
+  statementCount: number,
+): void {
+  if (
+    !Number.isInteger(predicate.statement) ||
+    predicate.statement < 0 ||
+    predicate.statement >= statementCount
+  ) {
+    throw new Error("accumulator membership predicate: bad statement index");
+  }
+  if (!Number.isSafeInteger(predicate.epoch) || predicate.epoch < 0) {
+    throw new Error("accumulator membership predicate: bad epoch");
+  }
+  // Point validity (identity accumulator included) is enforced by @credkit/accumulator on
+  // both the prove and verify paths.
+}
+
 export function provePresentation(
   suite: Ciphersuite,
   statements: readonly CredentialStatement[],
@@ -358,6 +442,7 @@ export function provePresentation(
   const equalities = spec.equalities ?? [];
   const predicates = spec.predicates ?? [];
   const memberships = spec.memberships ?? [];
+  const accumulators = spec.accumulatorMemberships ?? [];
 
   const setups = statements.map((s) =>
     blindProofSetup(
@@ -508,15 +593,56 @@ export function provePresentation(
     const blinding = states[m.statement]!.secrets.mTildes[position]!;
     return setProofInit(suite, m.params, { value, blinding }, membershipRng(k));
   });
+  // Accumulator memberships (FINDINGS §18): the CDH proof shares the referenced message's
+  // Schnorr blinding, and its element response is NEVER produced — the verifier reads the
+  // BBS response for the slot. The witness is prover-side sidecar state carried on the
+  // statement, keyed by the same message index the predicate references.
+  const accumulatorRng =
+    options.accumulatorRandomScalars ??
+    (() => (count: number) => calculateRandomScalars(suite, count));
+  const accumulatorStates: AccumulatorInitState[] = accumulators.map((a, k) => {
+    validateAccumulatorMembership(a, statements.length);
+    const statement = statements[a.statement]!;
+    const setup = setups[a.statement]!;
+    const total = statement.messages.length + (statement.committedMessages?.length ?? 0);
+    const position = witnessPosition(
+      { statement: a.statement, messageIndex: a.messageIndex },
+      setup.proverBlindIndex,
+      total,
+      setup.undisclosedIndexes,
+    );
+    const raw =
+      a.messageIndex < statement.messages.length
+        ? statement.messages[a.messageIndex]
+        : statement.committedMessages?.[a.messageIndex - statement.messages.length];
+    if (typeof raw !== "bigint") {
+      throw new Error("accumulator membership predicate: referenced message is not numeric");
+    }
+    const witness = statement.accumulatorWitnesses?.get(a.messageIndex);
+    if (witness === undefined) {
+      throw new Error("accumulator membership predicate: no witness for referenced slot");
+    }
+    const element = setup.scalars[proofMessageIndex(a.messageIndex, setup.proverBlindIndex)]!;
+    const blinding = states[a.statement]!.secrets.mTildes[position]!;
+    return accumulatorProofInit(
+      suite,
+      a.params,
+      a.accumulator,
+      { element, witness, blinding },
+      accumulatorRng(k),
+    );
+  });
 
   // Independence across ALL alphabet proofs, jointly: a signature blinding v shared between
   // two small-alphabet proofs is brute-forceable — testing e(V1, y1 + d'*G2) ==
   // e(V2, y2 + m'*G2) over candidate pairs reveals both hidden values. Guard the realistic
-  // misuse (one stateless mock everywhere) via each proof's first drawn scalar.
+  // misuse (one stateless mock everywhere) via each proof's first drawn scalar. Accumulator
+  // proofs join the same pool: their witness randomizer r plays the same structural role.
   const seenFirstDraws = new Set<Scalar>();
   for (const first of [
     ...rangeStates.map((state) => state.secrets.vs[0]!),
     ...membershipStates.map((state) => state.secrets.v),
+    ...accumulatorStates.map((state) => state.secrets.r),
   ]) {
     if (seenFirstDraws.has(first)) {
       throw new Error("presentation: predicates drew identical randomness — sources must be independent");
@@ -541,6 +667,8 @@ export function provePresentation(
     rangeStates,
     memberships,
     membershipStates,
+    accumulators,
+    accumulatorStates,
   );
 
   const proofs = states.map((state, index) => {
@@ -558,8 +686,11 @@ export function provePresentation(
   });
   const rangeProofs = rangeStates.map((state) => rangeProofFinalize(state, challenge));
   const membershipProofs = membershipStates.map((state) => setProofFinalize(state, challenge));
+  const accumulatorProofs = accumulatorStates.map((state) =>
+    accumulatorProofFinalize(state, challenge),
+  );
 
-  return { proofs, rangeProofs, membershipProofs, challenge };
+  return { proofs, rangeProofs, membershipProofs, accumulatorProofs, challenge };
 }
 
 // ---------------------------------------------------------------------------
@@ -578,10 +709,12 @@ export function verifyPresentation(
     const equalities = spec.equalities ?? [];
     const predicates = spec.predicates ?? [];
     const memberships = spec.memberships ?? [];
+    const accumulators = spec.accumulatorMemberships ?? [];
     const N = statements.length;
     if (N === 0 || presentation.proofs.length !== N) return false;
     if (presentation.rangeProofs.length !== predicates.length) return false;
     if (presentation.membershipProofs.length !== memberships.length) return false;
+    if (presentation.accumulatorProofs.length !== accumulators.length) return false;
     for (const proof of presentation.proofs) {
       if (proof.challenge !== presentation.challenge) return false;
     }
@@ -614,6 +747,33 @@ export function verifyPresentation(
       validateMembership(m, N);
       return setVerifyInit(suite, m.params, presentation.membershipProofs[k]!, presentation.challenge);
     });
+    // Accumulator memberships: the element response is READ FROM the outer BBS proof (the
+    // partial-proof seam) — reconstruction under the merged challenge is the binding, so
+    // there is no separate post-challenge equality check for these. accumulatorVerifyInit
+    // also performs the (challenge-independent) pairing check and throws on failure.
+    const accumulatorParts = accumulators.map((a, k) => {
+      validateAccumulatorMembership(a, N);
+      const descriptor = statements[a.statement]!;
+      const setup = setups[a.statement]!;
+      const position = witnessPosition(
+        { statement: a.statement, messageIndex: a.messageIndex },
+        descriptor.issuerKnownCount,
+        descriptor.messageDisclosures.size,
+        setup.undisclosedIndexes,
+      );
+      const elementResponse = presentation.proofs[a.statement]!.commitments[position];
+      if (elementResponse === undefined) {
+        throw new Error("accumulator membership predicate: missing element response");
+      }
+      return accumulatorVerifyInit(
+        suite,
+        a.params,
+        a.accumulator,
+        presentation.accumulatorProofs[k]!,
+        elementResponse,
+        presentation.challenge,
+      );
+    });
 
     const contexts: StatementContext[] = inits.map((parts, index) => ({
       publicKey: statements[index]!.publicKey,
@@ -631,6 +791,8 @@ export function verifyPresentation(
       predicateParts,
       memberships,
       membershipParts,
+      accumulators,
+      accumulatorParts,
     );
     if (challenge !== presentation.challenge) return false;
 
@@ -713,6 +875,7 @@ export function verifyPresentation(
  * presentation := i2osp(N, 8) || N * ( i2osp(len_i, 8) || proof_i_without_challenge )
  *              || i2osp(K, 8) || K * ( i2osp(len_k, 8) || range_proof_k )
  *              || i2osp(M, 8) || M * ( i2osp(len_m, 8) || membership_proof_m )
+ *              || i2osp(A, 8) || A * ( i2osp(len_a, 8) || accumulator_proof_a )
  *              || challenge
  *
  * Every proof carries the SAME merged challenge, so it is serialized exactly once, at the
@@ -733,6 +896,9 @@ export function presentationToOctets(
   const membershipBodies = presentation.membershipProofs.map((proof) =>
     setProofToOctets(suite, proof),
   );
+  const accumulatorBodies = presentation.accumulatorProofs.map((proof) =>
+    accumulatorProofToOctets(suite, proof),
+  );
   return concatBytes(
     i2osp(presentation.proofs.length, 8),
     ...bodies.flatMap((body) => [i2osp(body.length, 8), body]),
@@ -740,6 +906,8 @@ export function presentationToOctets(
     ...rangeBodies.flatMap((body) => [i2osp(body.length, 8), body]),
     i2osp(membershipBodies.length, 8),
     ...membershipBodies.flatMap((body) => [i2osp(body.length, 8), body]),
+    i2osp(accumulatorBodies.length, 8),
+    ...accumulatorBodies.flatMap((body) => [i2osp(body.length, 8), body]),
     i2osp(presentation.challenge, suite.scalarLength),
   );
 }
@@ -791,6 +959,7 @@ export function octetsToPresentation(suite: Ciphersuite, octets: Uint8Array): Pr
   };
   const rangeBodies = readSection();
   const membershipBodies = readSection();
+  const accumulatorBodies = readSection();
 
   if (octets.length - at !== scalarLength) throw new Error("presentation: bad length");
   const challengeBytes = octets.slice(at);
@@ -799,5 +968,14 @@ export function octetsToPresentation(suite: Ciphersuite, octets: Uint8Array): Pr
   const proofs = bodies.map((body) => octetsToProof(suite, concatBytes(body, challengeBytes)));
   const rangeProofs = rangeBodies.map((body) => octetsToRangeProof(suite, body));
   const membershipProofs = membershipBodies.map((body) => octetsToSetProof(suite, body));
-  return { proofs, rangeProofs, membershipProofs, challenge: proofs[0]!.challenge };
+  const accumulatorProofs = accumulatorBodies.map((body) =>
+    octetsToAccumulatorProof(suite, body),
+  );
+  return {
+    proofs,
+    rangeProofs,
+    membershipProofs,
+    accumulatorProofs,
+    challenge: proofs[0]!.challenge,
+  };
 }
