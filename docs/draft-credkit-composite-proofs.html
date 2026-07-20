@@ -1339,10 +1339,13 @@ reviewed as a design rather than as source code.<a href="#section-abstract-3" cl
                 <p id="section-toc.1-1.1.2.2.1" class="keepWithNext"><a href="#section-1.2" class="auto internal xref">1.2</a>.  <a href="#name-relationship-to-existing-sp" class="internal xref">Relationship to existing specifications</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.3">
-                <p id="section-toc.1-1.1.2.3.1" class="keepWithNext"><a href="#section-1.3" class="auto internal xref">1.3</a>.  <a href="#name-terminology" class="internal xref">Terminology</a></p>
+                <p id="section-toc.1-1.1.2.3.1" class="keepWithNext"><a href="#section-1.3" class="auto internal xref">1.3</a>.  <a href="#name-relationship-to-anoncreds-v" class="internal xref">Relationship to AnonCreds v2</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.4">
-                <p id="section-toc.1-1.1.2.4.1"><a href="#section-1.4" class="auto internal xref">1.4</a>.  <a href="#name-notation-and-conventions" class="internal xref">Notation and conventions</a></p>
+                <p id="section-toc.1-1.1.2.4.1"><a href="#section-1.4" class="auto internal xref">1.4</a>.  <a href="#name-terminology" class="internal xref">Terminology</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.5">
+                <p id="section-toc.1-1.1.2.5.1"><a href="#section-1.5" class="auto internal xref">1.5</a>.  <a href="#name-notation-and-conventions" class="internal xref">Notation and conventions</a></p>
 </li>
             </ul>
 </li>
@@ -1764,111 +1767,181 @@ pairing verification equation nor the <code>GT</code>-valued predicate commitmen
 transcript with them would be a natural future revision.<a href="#section-1.2-8" class="pilcrow">¶</a></p>
 </section>
 </div>
-<div id="terminology">
+<div id="relationship-to-anoncreds-v2">
 <section id="section-1.3">
-        <h3 id="name-terminology">
-<a href="#section-1.3" class="section-number selfRef">1.3. </a><a href="#name-terminology" class="section-name selfRef">Terminology</a>
+        <h3 id="name-relationship-to-anoncreds-v">
+<a href="#section-1.3" class="section-number selfRef">1.3. </a><a href="#name-relationship-to-anoncreds-v" class="section-name selfRef">Relationship to AnonCreds v2</a>
         </h3>
-<p id="section-1.3-1">Holder, Issuer, Verifier, Prover, and the BBS operation names (<code>Sign</code>, <code>Commit</code>, <code>BlindSign</code>,
+<p id="section-1.3-1">The construction this document describes is architecturally the same as AnonCreds v2, whose Rust
+implementation <span>[<a href="#ANONCREDS-V2" class="cite xref">ANONCREDS-V2</a>]</span> served as the architecture reference for the composite layer. The
+feature sets coincide almost exactly: multi-message BBS credentials, blind issuance over a
+holder-chosen link secret, selective disclosure, equality of hidden messages across credentials,
+predicates over hidden signed values, accumulator-based revocation, and the composition of all of
+these statements into one presentation. Two of its design decisions are adopted here directly: the
+Pedersen indirection that decouples a predicate backend from the signature proof (see
+<a href="#binding-a-predicate-to-a-signature" class="auto internal xref">Section 6.3.2</a>), and the integer message encoding that makes predicates
+over signed values possible at all (see <a href="#numeric-messages" class="auto internal xref">Section 3.1</a>).<a href="#section-1.3-1" class="pilcrow">¶</a></p>
+<p id="section-1.3-2">The two systems nonetheless share no bytes at any layer (all observations are as of crate
+<code>credx</code> 0.2.1):<a href="#section-1.3-2" class="pilcrow">¶</a></p>
+<table class="center" id="table-2">
+          <caption><a href="#table-2" class="selfRef">Table 2</a></caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Layer</th>
+              <th class="text-left" rowspan="1" colspan="1">AnonCreds v2</th>
+              <th class="text-left" rowspan="1" colspan="1">credkit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">BBS core</td>
+              <td class="text-left" rowspan="1" colspan="1">A vendored pre-IETF BBS from the academic short-group-signature lineage: its own generator derivation, Merlin transcript labels, no ciphersuite identifiers</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span> unchanged, verified byte-for-byte against its test vectors</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Blind issuance</td>
+              <td class="text-left" rowspan="1" colspan="1">Classic BBS+ blind signing — a G1 commitment with a Schnorr proof, predating the IETF draft</td>
+              <td class="text-left" rowspan="1" colspan="1">The <code>Commit</code>/<code>BlindSign</code> flow of <span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span>
+</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Predicates</td>
+              <td class="text-left" rowspan="1" colspan="1">Bulletproofs range proofs over 64-bit ranges</td>
+              <td class="text-left" rowspan="1" colspan="1">CCS signed-set membership and digit decomposition <span>[<a href="#CCS08" class="cite xref">CCS08</a>]</span> (see <a href="#predicates-over-hidden-messages" class="auto internal xref">Section 6</a>)</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Non-revocation</td>
+              <td class="text-left" rowspan="1" colspan="1">The same positive VB accumulator <span>[<a href="#VB20" class="cite xref">VB20</a>]</span>, proven with the paper's own membership protocol (additional generators, prover GT arithmetic)</td>
+              <td class="text-left" rowspan="1" colspan="1">The same accumulator, proven with the CDH weak-BB protocol (see <a href="#cdh-membership-proof-and-bbs-binding" class="auto internal xref">Section 7.3</a>)</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Transcript</td>
+              <td class="text-left" rowspan="1" colspan="1">Merlin</td>
+              <td class="text-left" rowspan="1" colspan="1">The labeled transcript of <a href="#the-merged-fiat-shamir-transcript" class="auto internal xref">Section 4</a>, kept in the BBS <code>hash_to_scalar</code> family</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">Envelope</td>
+              <td class="text-left" rowspan="1" colspan="1">A bespoke presentation format</td>
+              <td class="text-left" rowspan="1" colspan="1">W3C Verifiable Credentials and Presentations secured by Data Integrity proofs (see <a href="#the-cryptosuite-layer" class="auto internal xref">Section 12</a>)</td>
+            </tr>
+          </tbody>
+        </table>
+<p id="section-1.3-4">Every intermediate value consequently diverges — generators, domain separation, challenges, wire
+encodings — so neither implementation can serve as a test oracle for the other, and no
+interoperability between them is possible or intended. Cross-checking is structural only: the same
+statement composition, the same equality mechanic, the same protocol shapes. The comparison also
+runs the other way: AnonCreds v2 provides verifiable encryption of hidden messages toward a
+designated third party, which credkit does not implement. The relationship is fairly summarized
+as: the AnonCreds v2 architecture, re-derived over the IETF BBS wire format and packaged as
+JSON-LD credentials, with the predicate and accumulator-proof slots filled differently.<a href="#section-1.3-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="terminology">
+<section id="section-1.4">
+        <h3 id="name-terminology">
+<a href="#section-1.4" class="section-number selfRef">1.4. </a><a href="#name-terminology" class="section-name selfRef">Terminology</a>
+        </h3>
+<p id="section-1.4-1">Holder, Issuer, Verifier, Prover, and the BBS operation names (<code>Sign</code>, <code>Commit</code>, <code>BlindSign</code>,
 <code>ProofGen</code>, <code>ProofVerify</code>) are used as in <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span> and
-<span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span>.<a href="#section-1.3-1" class="pilcrow">¶</a></p>
-<span class="break"></span><dl class="dlCompact dlParallel" id="section-1.3-2">
-          <dt id="section-1.3-2.1">Statement:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.2">One BBS proof of knowledge over one signature within a composite presentation. The Prover
+<span>[<a href="#I-D.irtf-cfrg-bbs-blind-signatures" class="cite xref">I-D.irtf-cfrg-bbs-blind-signatures</a>]</span>.<a href="#section-1.4-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlCompact dlParallel" id="section-1.4-2">
+          <dt id="section-1.4-2.1">Statement:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.2">One BBS proof of knowledge over one signature within a composite presentation. The Prover
 holds the full witness (signature, all messages); the Verifier sees only public values (public
-key, header, disclosed messages).<a href="#section-1.3-2.2" class="pilcrow">¶</a>
+key, header, disclosed messages).<a href="#section-1.4-2.2" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.3">Presentation:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.4">A set of N statements proven together under one merged Fiat-Shamir challenge, together with
-any equality constraints and predicates over their hidden messages.<a href="#section-1.3-2.4" class="pilcrow">¶</a>
+<dt id="section-1.4-2.3">Presentation:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.4">A set of N statements proven together under one merged Fiat-Shamir challenge, together with
+any equality constraints and predicates over their hidden messages.<a href="#section-1.4-2.4" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.5">Presentation header:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.6">An application-chosen octet string bound into the merged challenge — the presentation-scope
+<dt id="section-1.4-2.5">Presentation header:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.6">An application-chosen octet string bound into the merged challenge — the presentation-scope
 analog of the <code>ph</code> input to BBS <code>ProofGen</code>. There is exactly one per presentation; statements
 inside a composite presentation carry no per-statement <code>ph</code>. Its intended content is
 Verifier-supplied freshness and audience data (see
-<a href="#replay-and-the-presentation-header" class="auto internal xref">Section 9.8</a>).<a href="#section-1.3-2.6" class="pilcrow">¶</a>
+<a href="#replay-and-the-presentation-header" class="auto internal xref">Section 9.8</a>).<a href="#section-1.4-2.6" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.7">Predicate:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.8">A set-membership, range, or accumulator-membership claim about a single hidden numeric message:
+<dt id="section-1.4-2.7">Predicate:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.8">A set-membership, range, or accumulator-membership claim about a single hidden numeric message:
 that it lies in a signed set or interval, or remains in an unrevoked registry, without revealing
-which member or which value.<a href="#section-1.3-2.8" class="pilcrow">¶</a>
+which member or which value.<a href="#section-1.4-2.8" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.9">Alphabet / signed set:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.10">The set of scalars a Verifier has Boneh-Boyen-signed <span>[<a href="#BB04" class="cite xref">BB04</a>]</span> to serve as the public parameters
+<dt id="section-1.4-2.9">Alphabet / signed set:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.10">The set of scalars a Verifier has Boneh-Boyen-signed <span>[<a href="#BB04" class="cite xref">BB04</a>]</span> to serve as the public parameters
 of a predicate. For a range predicate it is the digit alphabet <code>{0, ..., u-1}</code>; for set
-membership it is an arbitrary set of distinct scalars.<a href="#section-1.3-2.10" class="pilcrow">¶</a>
+membership it is an arbitrary set of distinct scalars.<a href="#section-1.4-2.10" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.11">Link secret:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.12">A holder-chosen scalar committed at issuance and signed blindly into multiple credentials, so
+<dt id="section-1.4-2.11">Link secret:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.12">A holder-chosen scalar committed at issuance and signed blindly into multiple credentials, so
 that a later presentation can prove two credentials share it — proving common holdership
-without an identifier.<a href="#section-1.3-2.12" class="pilcrow">¶</a>
+without an identifier.<a href="#section-1.4-2.12" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.13">Revocation identifier:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.14">A fresh issuer-assigned scalar signed into one credential as a hidden numeric message. It indexes
+<dt id="section-1.4-2.13">Revocation identifier:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.14">A fresh issuer-assigned scalar signed into one credential as a hidden numeric message. It indexes
 that credential in an accumulator registry but MUST NOT be disclosed or used as a cross-
-credential equality witness.<a href="#section-1.3-2.14" class="pilcrow">¶</a>
+credential equality witness.<a href="#section-1.4-2.14" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.15">Membership witness:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.16">Mutable holder-side state <code>C = (1/(y + alpha)) * V</code> proving that revocation identifier <code>y</code>
+<dt id="section-1.4-2.15">Membership witness:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.16">Mutable holder-side state <code>C = (1/(y + alpha)) * V</code> proving that revocation identifier <code>y</code>
 belongs to accumulator value <code>V</code>. It is kept beside the credential and updated after deletion
-epochs; it is not part of the signed credential or a proof envelope.<a href="#section-1.3-2.16" class="pilcrow">¶</a>
+epochs; it is not part of the signed credential or a proof envelope.<a href="#section-1.4-2.16" class="pilcrow">¶</a>
 </dd>
           <dd class="break"></dd>
-<dt id="section-1.3-2.17">Registry epoch:</dt>
-          <dd style="margin-left: 1.5em" id="section-1.3-2.18">A sequential identifier for one published accumulator value and its deletion update. The
-Verifier states which epoch and accumulator value it accepts.<a href="#section-1.3-2.18" class="pilcrow">¶</a>
+<dt id="section-1.4-2.17">Registry epoch:</dt>
+          <dd style="margin-left: 1.5em" id="section-1.4-2.18">A sequential identifier for one published accumulator value and its deletion update. The
+Verifier states which epoch and accumulator value it accepts.<a href="#section-1.4-2.18" class="pilcrow">¶</a>
 </dd>
         <dd class="break"></dd>
 </dl>
 </section>
 </div>
 <div id="notation-and-conventions">
-<section id="section-1.4">
+<section id="section-1.5">
         <h3 id="name-notation-and-conventions">
-<a href="#section-1.4" class="section-number selfRef">1.4. </a><a href="#name-notation-and-conventions" class="section-name selfRef">Notation and conventions</a>
+<a href="#section-1.5" class="section-number selfRef">1.5. </a><a href="#name-notation-and-conventions" class="section-name selfRef">Notation and conventions</a>
         </h3>
-<p id="section-1.4-1">The key words "MUST", "MUST NOT", "SHOULD", and "MAY" in this document are to be interpreted as
+<p id="section-1.5-1">The key words "MUST", "MUST NOT", "SHOULD", and "MAY" in this document are to be interpreted as
 described in BCP 14 <span>[<a href="#RFC2119" class="cite xref">RFC2119</a>]</span> <span>[<a href="#RFC8174" class="cite xref">RFC8174</a>]</span> when, and only when, they appear in all capitals, with
 the scope limited to what the reference implementation enforces as described in
-<a href="#what-this-document-is-and-is-not" class="auto internal xref">Section 1.1</a>.<a href="#section-1.4-1" class="pilcrow">¶</a></p>
+<a href="#what-this-document-is-and-is-not" class="auto internal xref">Section 1.1</a>.<a href="#section-1.5-1" class="pilcrow">¶</a></p>
 <ul class="compact">
-<li class="compact" id="section-1.4-2.1">
+<li class="compact" id="section-1.5-2.1">
             <code>G1</code>, <code>G2</code>, <code>GT</code> are the BLS12-381 groups; <code>e: G1 x G2 -&gt; GT</code> is the pairing; <code>r</code> is the prime
 subgroup order. <code>G1.BASE</code>, <code>G2.BASE</code> are the standard generators from
-<span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.4-2.1" class="pilcrow">¶</a>
+<span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.5-2.1" class="pilcrow">¶</a>
 </li>
-          <li class="compact" id="section-1.4-2.2">Scalars are elements of the field of order <code>r</code>, written lowercase (<code>x</code>, <code>v</code>, <code>c</code>). Group
+          <li class="compact" id="section-1.5-2.2">Scalars are elements of the field of order <code>r</code>, written lowercase (<code>x</code>, <code>v</code>, <code>c</code>). Group
 elements are uppercase (<code>A</code>, <code>V</code>, <code>Abar</code>). <code>a * P</code> is scalar multiplication; <code>P + Q</code> is the
-group operation; <code>-P</code> is negation. Arithmetic on scalars is mod <code>r</code> throughout.<a href="#section-1.4-2.2" class="pilcrow">¶</a>
+group operation; <code>-P</code> is negation. Arithmetic on scalars is mod <code>r</code> throughout.<a href="#section-1.5-2.2" class="pilcrow">¶</a>
 </li>
-          <li class="compact" id="section-1.4-2.3">
+          <li class="compact" id="section-1.5-2.3">
             <code>a || b</code> is octet-string concatenation. <code>I2OSP(n, len)</code> and <code>OS2IP(octets)</code> are as in
-<span>[<a href="#RFC8017" class="cite xref">RFC8017</a>]</span>. <code>len(x)</code> is the octet length of <code>x</code>.<a href="#section-1.4-2.3" class="pilcrow">¶</a>
+<span>[<a href="#RFC8017" class="cite xref">RFC8017</a>]</span>. <code>len(x)</code> is the octet length of <code>x</code>.<a href="#section-1.5-2.3" class="pilcrow">¶</a>
 </li>
-          <li class="compact" id="section-1.4-2.4">
-            <code>hash_to_scalar(msg, dst)</code> is the BBS operation from <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.4-2.4" class="pilcrow">¶</a>
+          <li class="compact" id="section-1.5-2.4">
+            <code>hash_to_scalar(msg, dst)</code> is the BBS operation from <span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.5-2.4" class="pilcrow">¶</a>
 </li>
-          <li class="compact" id="section-1.4-2.5">
-            <code>utf8(s)</code> is the UTF-8 encoding of ASCII string <code>s</code>.<a href="#section-1.4-2.5" class="pilcrow">¶</a>
+          <li class="compact" id="section-1.5-2.5">
+            <code>utf8(s)</code> is the UTF-8 encoding of ASCII string <code>s</code>.<a href="#section-1.5-2.5" class="pilcrow">¶</a>
 </li>
-          <li class="compact" id="section-1.4-2.6">A Prover's Schnorr blinding for a hidden message is written <code>m~</code> (drawn per presentation); the
+          <li class="compact" id="section-1.5-2.6">A Prover's Schnorr blinding for a hidden message is written <code>m~</code> (drawn per presentation); the
 corresponding response scalar the Verifier reconstructs is <code>m^ = m~ + c * m</code>, where <code>c</code> is the
 challenge and <code>m</code> the message scalar. This is the response convention of
-<span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.4-2.6" class="pilcrow">¶</a>
+<span>[<a href="#I-D.irtf-cfrg-bbs-signatures" class="cite xref">I-D.irtf-cfrg-bbs-signatures</a>]</span>.<a href="#section-1.5-2.6" class="pilcrow">¶</a>
 </li>
         </ul>
-<p id="section-1.4-3">Two ciphersuites are used, unchanged from the BBS drafts: <code>BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_</code>
+<p id="section-1.5-3">Two ciphersuites are used, unchanged from the BBS drafts: <code>BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_</code>
 (SHA-256, via <code>expand_message_xmd</code> <span>[<a href="#RFC9380" class="cite xref">RFC9380</a>]</span>) and <code>BBS_BLS12381G1_XOF:SHAKE-256_SSWU_RO_</code>
 (SHAKE-256, via <code>expand_message_xof</code>). Group elements serialize with the point encoding of the
-BBS drafts: <code>G1</code> compressed to 48 octets, <code>G2</code> compressed to 96 octets, scalars to 32 octets.<a href="#section-1.4-3" class="pilcrow">¶</a></p>
+BBS drafts: <code>G1</code> compressed to 48 octets, <code>G2</code> compressed to 96 octets, scalars to 32 octets.<a href="#section-1.5-3" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>
@@ -1973,8 +2046,8 @@ integer in <code>[0, r)</code>, in which case it <strong>is</strong> its own sca
      return hash_to_scalar(message, api_id || "MAP_MSG_TO_SCALAR_AS_HASH_")
 </pre><a href="#section-3.1-2" class="pilcrow">¶</a>
 </div>
-<p id="section-3.1-3">This is the same technique AnonCreds uses for its attribute encoding, and it is the only change
-to the signing path. Bytes messages are unaffected and continue to reproduce the BBS vectors.
+<p id="section-3.1-3">This is the same technique AnonCreds uses for its attribute encoding (see
+<a href="#relationship-to-anoncreds-v2" class="auto internal xref">Section 1.3</a>), and it is the only change to the signing path. Bytes messages are unaffected and continue to reproduce the BBS vectors.
 The consequences for predicate semantics — that predicates are modular, and that honest values
 must be encoded well below <code>r</code> for the natural comparison to hold — are discussed in
 <a href="#modular-predicate-semantics" class="auto internal xref">Section 9.9</a>. A predicate MUST reference a message that was signed as an
@@ -3234,6 +3307,10 @@ accumulator layers on which they rely.<a href="#section-12.4-3" class="pilcrow">
 <dt id="ALLOSAUR">[ALLOSAUR]</dt>
         <dd>
 <span class="refAuthor">Jaques, S.</span>, <span class="refAuthor">Lodder, M.</span>, and <span class="refAuthor">H. Montgomery</span>, <span class="refTitle">"ALLOSAUR: Accumulator with Low-Latency Oblivious Sublinear Anonymous credential Updates with Revocations"</span>, <span class="seriesInfo">IACR Cryptology ePrint Archive 2022/1362</span>, <time datetime="2022" class="refDate">2022</time>, <span>&lt;<a href="https://eprint.iacr.org/2022/1362">https://eprint.iacr.org/2022/1362</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="ANONCREDS-V2">[ANONCREDS-V2]</dt>
+        <dd>
+<span class="refAuthor">AnonCreds Project</span>, <span class="refTitle">"AnonCreds v2 Rust implementation (crate credx)"</span>, <time datetime="2026" class="refDate">2026</time>, <span>&lt;<a href="https://github.com/anoncreds/anoncreds-v2-rs">https://github.com/anoncreds/anoncreds-v2-rs</a>&gt;</span>. </dd>
 <dd class="break"></dd>
 <dt id="BB04">[BB04]</dt>
         <dd>
