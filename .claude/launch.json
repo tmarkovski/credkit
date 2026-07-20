@@ -12,6 +12,18 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--dir", "/Users/tm/git/tmarkovski/verygoodwallet", "--filter", "@vgw/wallet", "dev"],
       "port": 5173
+    },
+    {
+      "name": "vgw-shop",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "/Users/tm/git/tmarkovski/verygoodwallet", "--filter", "@vgw/shop", "dev"],
+      "port": 5175
+    },
+    {
+      "name": "vgw-rentals",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "/Users/tm/git/tmarkovski/verygoodwallet", "--filter", "@vgw/rentals", "dev"],
+      "port": 5176
     }
   ]
 }
