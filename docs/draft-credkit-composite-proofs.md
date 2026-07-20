@@ -106,7 +106,8 @@ why, at the level of detail a second reader would need to follow the security ar
 
 Where this document says an implementation "MUST" or "rejects" something, it is stating what the
 reference implementation enforces and why that enforcement is load-bearing for soundness or
-privacy, not imposing a conformance requirement on anyone.
+privacy, not imposing a conformance requirement on anyone. Limitations and weaknesses the design
+knowingly accepts are collected in (#known-limitations).
 
 ## Relationship to existing specifications
 
@@ -991,7 +992,7 @@ using the predicate outside the regime where its plain-language reading holds. T
 application responsibility; the library enforces the `2^64` ceiling on `u^L` but cannot know an
 application's intended encoding.
 
-## Trusted setup and `u`-SDH
+## Trusted setup and `u`-SDH {#trusted-setup-and-u-sdh}
 
 The only trust the parameters require is that the signing scalar `x` was discarded. A Verifier
 that keeps `x` gains nothing it did not already have — it can already accept or reject at will;
@@ -1006,6 +1007,18 @@ a *distinct* well-formed alphabet to each Prover, turning an otherwise unlinkabl
 into a per-Prover tag. This is the same linkability class as per-Prover BBS generators. Provers
 SHOULD fetch predicate parameters from the same published location as every other Prover, and
 treat a Verifier-specific alphabet as a red flag.
+
+## Registry equivocation is the same trap {#registry-equivocation}
+
+The accumulator's update feed has the same failure mode as a per-prover alphabet. Deletion
+epochs are meant to be one public sequence common to all holders; an operator that serves a
+targeted Holder a forked feed — a different accumulator value under the same epoch number —
+partitions its holders. The targeted Holder's witness then verifies only against the forked
+value, so it either fails against a Verifier's canonical state or, where a Verifier tries more
+than one accepted value, identifies itself by which one its proof binds. Witness verification
+((#deletion-only-epochs-and-holder-updates)) detects a malformed feed, not a forked one. The
+defense is the alphabet defense: Holders SHOULD obtain registry updates from the same published
+location as every other holder and treat conflicting values for one epoch as a red flag.
 
 ## Transcript order binding
 
@@ -1056,6 +1069,119 @@ registry.
 A Verifier that accepts multiple epochs learns which accepted state a holder used. A stale epoch
 can therefore fingerprint the holder's synchronization lag. Holders SHOULD update before
 presenting, and Verifiers SHOULD keep any acceptance window no wider than operationally required.
+
+# Known limitations and open issues {#known-limitations}
+
+A document that exists so a design can be reviewed honestly has to record what is unproven,
+unhardened, or structurally weak, not only what works. Nothing below is a flaw discovered after
+the fact; each is a known consequence of a choice, listed so a reader can weigh it rather than
+find it.
+
+## The composition has no formal security proof
+
+Every primitive credkit uses — BBS, blind BBS, the CCS set-membership protocol, Boneh-Boyen
+signatures, the VB accumulator — has published analysis. The *composition* does not. The claim
+that sharing Schnorr blindings across BBS, CCS, and accumulator statements under one merged
+challenge yields a sound AND-composition with knowledge extraction is argued informally in this
+document ((#one-challenge), (#binding-a-predicate-to-a-signature)) and exercised by adversarial
+tests, but no reduction has been written down, no machine-checked or peer-reviewed proof
+exists, and the construction has had no external cryptographic review. AND-composition of sigma
+protocols is standard; this particular assembly — partial-proof response sharing across three
+proof families, one of them pairing-based with `GT` commitments — is bespoke. A concrete
+instance of the gap: the additions-static accumulator operation adopted from [@KB21] carries a
+soundness argument in a non-adaptive model, and credkit's compensations — revocation ids are
+issuer-assigned uniform scalars, never holder-chosen, and a forged witness binds to nothing
+without a BBS signature over the same id — are architectural, not a proof in the stronger
+model. Treat soundness as plausible and tested, not established.
+
+## Holder binding is knowledge of a scalar
+
+Credentials here are not bearer instruments: every presentation is a proof of knowledge of all
+hidden messages, among them the blind-signed link secret — a value the Issuer never saw and no
+transcript contains — so a stolen signature alone presents nothing. But the binding is
+knowledge-based, not device-based. Whoever knows the full witness — signatures, messages, the
+link secret, membership witnesses — has the whole ability to present. Exfiltration of that
+state is therefore complete impersonation, with a blast radius of every credential bound to
+the shared link secret; and nothing cryptographic stops a cooperative Holder from lending it —
+knowledge, unlike a non-extractable hardware key, copies freely, so credential pooling is
+deterred by the all-or-nothing stakes of sharing one's entire credential persona rather than
+prevented by construction.
+
+The absence of a hardware-bound presentation key is a choice with a reason: a device key that
+signed each presentation would be a correlation handle unless its signature were itself proven
+in zero knowledge, and proving a secure-element signature inside a proof is the SNARK-scale
+machinery this construction exists to avoid. A deployment can anchor the scalar in hardware —
+the motivating wallet derives it from a passkey PRF output, so stored state alone is not the
+secret — but the protocol neither requires nor attests that, and revocation
+((#accumulator-non-revocation)) remains the only after-the-fact remedy.
+
+## Adaptive predicate bounds can binary-search a hidden value
+
+A range predicate reveals one bit. A Verifier free to choose bounds adaptively across sessions
+can spend those bits on a binary search: on the order of `log2` of the encoding space many
+presentations recover the hidden value exactly, and a Holder's refusal to answer an unusual
+bound leaks a bit too. The construction cannot prevent this — each individual proof does
+exactly what it claims. The mitigation is policy: bounds SHOULD be fixed, published policy
+constants (a statutory age, a regulatory threshold) common to every Holder, and a Verifier that
+varies bounds per Holder or per session is the range-predicate analog of the per-Prover
+alphabet of (#per-prover-alphabets).
+
+## Presentations are transferable evidence
+
+A presentation is non-interactive and publicly verifiable, and that cuts both ways: anyone who
+later obtains the transcript and the Verifier's inputs can re-run verification and be exactly as
+convinced as the Verifier was. What a Holder discloses is therefore not merely data but
+issuer-endorsed evidence — a Verifier's breach or onward sharing leaks provably authentic
+claims, not deniable assertions, and the Holder cannot repudiate them afterward. Restoring
+deniability would take a designated-verifier or interactive variant of the proof, which credkit
+does not provide. Verifiers holding presentations SHOULD treat them with the sensitivity of
+certified documents, not form submissions.
+
+## Key compromise is silent
+
+Every trust anchor here fails undetectably, because the proofs its compromise enables are
+zero-knowledge and therefore indistinguishable from honest ones. A compromised Issuer key
+forges credentials, as in any signature scheme. A compromised alphabet scalar `x` — one that
+was not discarded as (#trusted-setup-and-u-sdh) requires — lets a Prover prove any value
+against that alphabet. A compromised registry `alpha` lets anyone compute a valid witness for
+any id, silently disabling revocation for the whole registry (though not authentication: the
+binding of (#accumulator-proofs-require-a-credential-binding) still demands a BBS-signed id).
+None of these has a detection mechanism or a recovery story beyond rotation and reissuance.
+Separately, `u`-SDH security degrades as signed sets grow — a Cheon-style loss of up to
+roughly `log2(q)/2` bits for a `q`-element set — negligible for digit alphabets, but a reason
+to keep set-membership alphabets small.
+
+## The implementation is not hardened against side channels
+
+The reference implementation is pure TypeScript over `@noble/curves`. JavaScript `BigInt`
+arithmetic is not constant-time, secret scalars — the link secret above all — pass through
+garbage-collected memory that cannot be reliably zeroized, and no masking beyond what the
+protocols themselves require is applied. The implementation optimizes for auditability of the
+cryptographic logic, not resistance to a co-resident timing adversary; a threat model that
+includes one needs a hardened implementation.
+
+## Post-quantum: soundness fails, privacy is unassessed
+
+All soundness rests on discrete-log-family assumptions in pairing groups (`u`-SDH, CDH, and
+the BBS reductions); a cryptographically relevant quantum computer forges all of it. Hiding is
+on better footing — sigma responses are statistically blinded and the blinded signature values
+are uniform group elements — but no everlasting-privacy analysis of the full composite has
+been done, so the privacy of recorded transcripts against a future quantum adversary should be
+treated as unevaluated rather than guaranteed.
+
+## Unlinkability ends at the cryptography
+
+The unlinkability of (#privacy-considerations) covers the transcript and nothing around it.
+The combination of disclosed values can identify a Holder outright; an unusual request shape —
+which claims, which predicates, which bounds — fingerprints; network metadata and timing
+correlate visits the proofs never could. At the cryptosuite layer, the structure of the
+disclosed document (quad and blank-node counts) reveals the credential's schema, an
+inheritance from the canonicalization that `bbs-2023` itself notes. And the Issuer's public key
+is visible in every presentation, so a Holder's anonymity set is never larger than that
+Issuer's holder population — a credential from a ten-holder registry identifies its holder
+nearly as well as a name would. The epoch-lag channel of (#revocation-update-privacy) is one
+instance of the general rule: the cryptography removes protocol-level correlation handles, and
+everything else is application discipline.
 
 # The cryptosuite layer {#the-cryptosuite-layer}
 
