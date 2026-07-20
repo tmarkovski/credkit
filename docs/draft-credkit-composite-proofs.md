@@ -163,6 +163,13 @@ Presentation:
 : A set of N statements proven together under one merged Fiat-Shamir challenge, together with
   any equality constraints and predicates over their hidden messages.
 
+Presentation header:
+: An application-chosen octet string bound into the merged challenge — the presentation-scope
+  analog of the `ph` input to BBS `ProofGen`. There is exactly one per presentation; statements
+  inside a composite presentation carry no per-statement `ph`. Its intended content is
+  Verifier-supplied freshness and audience data (see
+  (#replay-and-the-presentation-header)).
+
 Predicate:
 : A set-membership, range, or accumulator-membership claim about a single hidden numeric message:
   that it lies in a signed set or interval, or remains in an unrevoked registry, without revealing
@@ -465,8 +472,11 @@ The domain separation tag is specific to both the protocol version and the ciphe
 
 ## GT serialization {#gt-serialization}
 
-Predicate sigma commitments live in `GT`. They are absorbed using the implementation's canonical
-`Fp12` serialization (576 octets). This ties the transcript to a specific field encoding: a
+Predicate sigma commitments live in `GT`. They are absorbed as the uncompressed `Fp12`
+serialization of the reference implementation's pairing library (`@noble/curves`): the twelve
+base-field coefficients in ascending tower order — `Fp12 = c0 || c1` over `Fp6`,
+`Fp6 = c0 || c1 || c2` over `Fp2`, `Fp2 = c0 || c1` over `Fp` — each coefficient a 48-octet
+big-endian integer, 576 octets in all. This ties the transcript to a specific field encoding: a
 change to that encoding, or to the underlying pairing library's layout, changes every challenge
 and is caught by the golden vectors before anything downstream. Absorbing `GT` elements, rather
 than re-deriving them, keeps the Verifier's reconstruction (#binding-a-predicate-to-a-signature)
@@ -536,7 +546,15 @@ holder, unlinkably between presentations and without the issuers ever learning t
 blindness is essential — an issuer that learned the secret could, colluding with another issuer,
 join all of a holder's credentials.
 
-## Randomness independence
+## Randomness generation and independence
+
+Every random scalar in every layer — the BBS Schnorr blindings, equality-class blindings, the
+predicate blinding factors `v` and `v~`, the accumulator randomizers `rho` and `rho~`, and the
+registry's own secrets — is drawn by the `calculate_random_scalars` procedure recommended by
+[@!I-D.irtf-cfrg-bbs-signatures]: `OS2IP` over `expand_len` (48) uniformly random octets,
+reduced mod `r`, keeping bias below `2^-128`. The source is pluggable per operation so that
+fixtures can substitute the drafts' `seeded_random_scalars` mock, which is how every randomized
+operation in the reference implementation has a byte-reproducible golden vector.
 
 Reusing one stateless randomness source across statements is the realistic way to accidentally
 share a blinding where independence is required (for example a shared `e~`, which would leak
@@ -950,6 +968,18 @@ Verifier. Cryptographic verification establishes non-revocation as of exactly th
 not decide whether the state is fresh enough. Verifiers MUST obtain registry state independently
 of the presentation and SHOULD set an explicit maximum tolerated age. A carried wire copy may be
 used for diagnostics but MUST NOT replace verifier-supplied state.
+
+## Replay and the presentation header {#replay-and-the-presentation-header}
+
+A presentation is publicly verifiable, so anyone who obtains one can replay it to any Verifier
+that would accept the same transcript. What prevents that is not the proof system but the
+presentation header: the application places a Verifier-supplied nonce (and, where useful, an
+audience identifier) there, and the transcript binds it into the one challenge, so a transcript
+answering one Verifier's nonce cannot answer another's. Whether a nonce is fresh is Verifier
+policy, exactly like registry freshness. The cryptosuite layer of (#the-cryptosuite-layer)
+folds the W3C proof options `challenge` and `domain` into this header as length-framed fields
+under a dedicated DST — `domain` encoded even when empty, one layout — so a VP's authentication
+options are covered by the challenge with no change to the composite layer.
 
 ## Modular predicate semantics {#modular-predicate-semantics}
 
