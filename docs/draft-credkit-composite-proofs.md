@@ -25,18 +25,17 @@ organization = "credkit"
 
 .# Abstract
 
-This document describes credkit, an experimental construction that composes multiple
-IETF BBS proofs of knowledge under a single merged Fiat-Shamir challenge, and adds
-zero-knowledge predicates — set membership, range, and accumulator membership for
-non-revocation — over signed messages that are never disclosed. It is written in the style of,
-and layered directly on top of, the CFRG BBS
-Signatures and Blind BBS Signatures drafts, and it is motivated by the W3C Verifiable
-Credentials Data Model and the `bbs-2023` Data Integrity cryptosuite. Its purpose is to record,
-for readers already fluent in those specifications, exactly where credkit reuses them, where it
-diverges, and how the pieces that neither specification provides — cross-credential witness
-equality (a "link secret"), set-membership and range predicates bound to signed values, and a
-privacy-preserving revocation gate bound to a hidden credential identifier — are constructed and
-made sound.
+This document describes credkit, an experimental construction that composes multiple IETF BBS
+proofs of knowledge under a single merged Fiat-Shamir challenge. It adds zero-knowledge
+set-membership, range, and non-revocation predicates over signed messages without disclosing those
+messages.
+
+credkit is layered directly on the CFRG BBS Signatures and Blind BBS Signatures drafts and is
+motivated by the W3C Verifiable Credentials Data Model and the `bbs-2023` Data Integrity
+cryptosuite. For readers already fluent in those specifications, this document identifies what
+credkit reuses, where it diverges, and how it constructs cross-credential witness equality (a
+"link secret"), predicates bound to hidden signed values, and a privacy-preserving revocation gate
+bound to a hidden credential identifier.
 
 This is a description of an experiment, not a standards-track proposal. It defines no new
 registry, claims no interoperability, and has no formal standing. It exists so the design can be
@@ -46,26 +45,29 @@ reviewed as a design rather than as source code.
 
 # Introduction
 
-The BBS signature scheme [@!I-D.irtf-cfrg-bbs-signatures] gives a holder selective disclosure
-with verifier unlinkability: each presentation is a freshly randomized proof of knowledge, so
+The BBS signature scheme [@!I-D.irtf-cfrg-bbs-signatures] gives holders selective disclosure and
+verifier unlinkability: each presentation is a freshly randomized proof of knowledge, so
 two verifiers who collude on the transcripts they received cannot tell they saw the same
 credential. The Blind BBS extension [@!I-D.irtf-cfrg-bbs-blind-signatures] lets an issuer sign
-messages it never learns, which is the mechanism a holder-chosen secret needs in order to be
-carried across credentials from different issuers.
+messages it never learns. This allows a holder-chosen secret to be carried across credentials
+from different issuers.
 
 Neither specification, on its own, lets a holder prove anything about a message it does *not*
 disclose. Selective disclosure is all-or-nothing per message: a birth date is either revealed
 verbatim or withheld entirely. The `bbs-2023` Data Integrity cryptosuite [@DI-BBS] inherits this
 limitation: it discloses or hides whole statements and defines no predicate mechanism, so a
-deployment that needs one (for example, "older than 18") must add an external construction. The
-wallet that motivated this work did so by signing a Poseidon commitment to the birth date into
-the credential, disclosing that commitment on every presentation, and proving in a separate
-circuit that it opens to a date past a cutoff — and that fixed, disclosed field element,
-identical across presentations, is a perfect cross-verifier correlation handle, reintroducing
-exactly what BBS is chosen to remove. The flaw is the *fixed* commitment, not the bridge itself:
-a fresh per-presentation commitment (as in Blind BBS COMMIT mode, or AnonCreds' Pedersen bridge)
-does not correlate. This is one deployment's approach — the concrete failure credkit started
-from — not a claim about how the field at large builds predicates.
+deployment that needs one (for example, "older than 18") must add an external construction.
+
+The wallet that motivated this work signed a Poseidon commitment to the birth date into the
+credential, disclosed that commitment on every presentation, and used a separate circuit to prove
+that it opened to a date past a cutoff. Because the disclosed field element was fixed and identical
+across presentations, it became a perfect cross-verifier correlation handle and reintroduced
+exactly what BBS was chosen to remove.
+
+The flaw was the *fixed* commitment, not the bridge itself. A fresh per-presentation commitment
+(as in Blind BBS COMMIT mode or AnonCreds' Pedersen bridge) does not correlate. This was one
+deployment's approach — the concrete failure credkit started from — not a claim about how the
+field at large builds predicates.
 
 credkit is an attempt to close that gap without a disclosed commitment and without a SNARK. It
 keeps the IETF BBS wire format and ciphersuites unchanged at the bottom, and builds three layers
@@ -82,19 +84,19 @@ on top:
   under the shared challenge. The value stays hidden; only the predicate's truth is revealed.
 
 - An **accumulator revocation layer** using a positive VB bilinear accumulator [@VB20], operated
-  additions-static with deletion-only public updates. Its CDH membership proof shares the hidden
-  revocation id's BBS response, so the Verifier learns that the signed credential remains in the
-  accepted registry state without learning the id.
+  with additions held static and deletion-only public updates. Its CDH membership proof shares the
+  hidden revocation identifier's BBS response, so the Verifier learns that the signed credential
+  remains in the accepted registry state without learning the identifier.
 
-A JSON-LD cryptosuite that packages these presentations into W3C Verifiable Credentials
-[@VC-DATA-MODEL] in the manner of `bbs-2023`, together with a second cryptosuite that carries N
-of them under one challenge in a Verifiable Presentation, is implemented and summarized in
-(#the-cryptosuite-layer); the suite's full specification is out of scope here.
+A JSON-LD cryptosuite packages these presentations into W3C Verifiable Credentials
+[@VC-DATA-MODEL] in the manner of `bbs-2023`. A second cryptosuite carries N such credentials
+under one challenge in a Verifiable Presentation. Both are implemented and summarized in
+(#the-cryptosuite-layer); their full specification is out of scope here.
 
-## What this document is, and is not
+## What this document is and is not
 
 This document is descriptive. It records the choices a single reference implementation makes and
-why, at the level of detail a second reader would need to follow the security argument. It is
+why, at the level of detail an independent reader would need to follow the security argument. It is
 **not**:
 
 - a standards-track document, or a candidate to become one;
@@ -119,7 +121,7 @@ credkit is deliberately stratified so that each layer's relationship to prior wo
 | Blind issuance: `Commit`, `BlindSign` | Implements the stable, fixture-covered part of [@!I-D.irtf-cfrg-bbs-blind-signatures]; omits COMMIT-mode disclosure (see (#no-commit-mode)). |
 | Numeric messages | A narrow extension to the BBS message-to-scalar map (see (#numeric-messages)). |
 | Composite presentations, predicates | New; described here. Neither IETF draft has an equivalent. |
-| Accumulator revocation | A credkit composition of the positive VB accumulator [@VB20], an additions-static registry operation [@KB21], deletion-only public updates, and a CDH weak-BB membership proof bound to a BBS message. |
+| Accumulator revocation | A credkit composition of the positive VB accumulator [@VB20], a registry operation with additions held static [@KB21], deletion-only public updates, and a CDH weak-BB membership proof bound to a BBS message. |
 | JSON-LD cryptosuite | Built for single- and multi-credential presentations; motivated by `bbs-2023` [@DI-BBS]. Summarized in (#the-cryptosuite-layer), not fully specified here. |
 
 The only modifications to the BBS layer are (a) numeric messages and (b) exposing the proof
@@ -130,24 +132,32 @@ IETF construction as written.
 Two adjacent CFRG efforts deserve precise situating. [@?I-D.irtf-cfrg-sigma-protocols]
 standardizes interactive sigma protocols proving knowledge of preimages of linear maps in
 prime-order groups, and [@?I-D.irtf-cfrg-fiat-shamir] standardizes their non-interactive form
-via a duplex-sponge transcript. This document is structurally aligned with both: each statement
-is proven in the same commit/challenge/response phases (the split-phase interface of
-(#reachable-schnorr-blindings-and-split-phase-proof-generation) is that draft's
-`prover_commit`/`prover_response` decomposition), and the transcript of
-(#the-merged-fiat-shamir-transcript) enforces the same discipline — labeled prefix-free
-absorption, protocol and ciphersuite binding, and exactly one challenge per transcript. This
-document is not, however, an instantiation of either draft, for three reasons. First, AND
-composition of statements under one challenge — the mechanism this document exists to describe —
-is explicitly out of scope of [@?I-D.irtf-cfrg-sigma-protocols]. Second, challenge derivation
-here stays in the BBS `hash_to_scalar` family rather than adopting the Keccak duplex sponge of
-[@?I-D.irtf-cfrg-fiat-shamir]: the BBS layer must derive challenges with `hash_to_scalar` to
-conform to [@!I-D.irtf-cfrg-bbs-signatures], and running a second derivation primitive in the
-composite layer would be exactly the two-path Fiat-Shamir fork that (#one-challenge) exists to
-prevent. Third, [@?I-D.irtf-cfrg-sigma-protocols] currently defines only P-256 normatively, and
-neither the BBS pairing verification equation nor the `GT`-valued predicate commitments of
-(#predicates-over-hidden-messages) fall within its linear-map scope. Should those drafts mature
-to cover BLS12-381 and statement composition, re-aligning this layer's transcript with them is a
-natural future revision.
+via a duplex-sponge transcript.
+
+This document is structurally aligned with both. Each statement is proven in the same
+commit/challenge/response phases: the split-phase interface of
+(#reachable-schnorr-blindings-and-split-phase-proof-generation) follows the
+`prover_commit`/`prover_response` decomposition. The transcript of
+(#the-merged-fiat-shamir-transcript) enforces the same discipline: labeled prefix-free absorption,
+protocol and ciphersuite binding, and exactly one challenge per transcript.
+
+This document is not, however, an instantiation of either draft, for three reasons:
+
+1. AND composition of statements under one challenge — the mechanism this document exists to
+   describe — is explicitly out of scope of [@?I-D.irtf-cfrg-sigma-protocols].
+
+2. Challenge derivation here stays in the BBS `hash_to_scalar` family rather than adopting the
+   Keccak duplex sponge of [@?I-D.irtf-cfrg-fiat-shamir]. The BBS layer must derive challenges
+   with `hash_to_scalar` to conform to [@!I-D.irtf-cfrg-bbs-signatures]. Running a second
+   derivation primitive in the composite layer would create exactly the two-path Fiat-Shamir fork
+   that (#one-challenge) exists to prevent.
+
+3. [@?I-D.irtf-cfrg-sigma-protocols] currently defines only P-256 normatively. Neither the BBS
+   pairing verification equation nor the `GT`-valued predicate commitments of
+   (#predicates-over-hidden-messages) fall within its linear-map scope.
+
+Should those drafts mature to cover BLS12-381 and statement composition, re-aligning this layer's
+transcript with them would be a natural future revision.
 
 ## Terminology
 
@@ -186,15 +196,15 @@ Link secret:
   that a later presentation can prove two credentials share it — proving common holdership
   without an identifier.
 
-Revocation id:
+Revocation identifier:
 : A fresh issuer-assigned scalar signed into one credential as a hidden numeric message. It indexes
   that credential in an accumulator registry but MUST NOT be disclosed or used as a cross-
   credential equality witness.
 
 Membership witness:
-: Mutable holder-side state `C = (1/(y + alpha)) * V` proving that revocation id `y` belongs to
-  accumulator value `V`. It is kept beside the credential and updated after deletion epochs; it is
-  not part of the signed credential or a proof envelope.
+: Mutable holder-side state `C = (1/(y + alpha)) * V` proving that revocation identifier `y`
+  belongs to accumulator value `V`. It is kept beside the credential and updated after deletion
+  epochs; it is not part of the signed credential or a proof envelope.
 
 Registry epoch:
 : A sequential identifier for one published accumulator value and its deletion update. The
@@ -231,22 +241,22 @@ BBS drafts: `G1` compressed to 48 octets, `G2` compressed to 96 octets, scalars 
 
 ## Five properties, one construction
 
-credkit exists because five privacy properties that are usually treated as separate features are,
-with BBS plus blind issuance, a single construction:
+credkit exists because five privacy properties usually treated as separate features can, with BBS
+plus blind issuance, be realized in a single construction:
 
-- **Verifier unlinkability** is already provided by BBS: each `ProofVerify`-able proof is
-  randomized. credkit preserves it by never adding a stable, disclosed value to a presentation.
+- **Verifier unlinkability** is already provided by BBS: each proof is freshly randomized.
+  credkit preserves it by never adding a stable, disclosed value to a presentation.
 - **Blind issuance** lets the Issuer sign a holder-committed message it never sees
   [@!I-D.irtf-cfrg-bbs-blind-signatures].
 - **Credential linkability** is a witness-equality claim: two statements sharing one hidden
-  message's Schnorr blinding under one challenge produce equal response scalars iff the messages
-  are equal. If the shared message is a blindly signed link secret, this proves common
+  message's Schnorr blinding under one challenge produce equal response scalars if and only if the
+  messages are equal. If the shared message is a blindly signed link secret, this proves common
   holdership and nothing else.
 - **Predicates** are the same shared-blinding idea pointed at a Boneh-Boyen-signed alphabet
   rather than a second credential.
 - **Private non-revocation** points that shared blinding at a positive accumulator membership
-  proof. The Verifier learns that a hidden signed revocation id remains in the accepted registry
-  state, never the id itself.
+  proof. The Verifier learns that a hidden signed revocation identifier remains in the accepted
+  registry state, never the identifier itself.
 
 The load-bearing observation is that credential linkage, predicates, and private non-revocation
 all reduce to *sharing a Schnorr blinding under one Fiat-Shamir challenge*. The merged transcript of
@@ -257,7 +267,7 @@ using more than one challenge breaks all of them in the same way (see (#one-chal
 
 ```
   +-------------------------------------------------------------+
-  |  JSON-LD cryptosuite  (VC + VP envelope; motiv. bbs-2023)   |
+  |  JSON-LD cryptosuite  (VC + VP envelope; bbs-2023-based)    |
   +-------------------------------------------------------------+
   |  Composite presentations                                    |
   |    - merged Fiat-Shamir transcript                          |
@@ -280,9 +290,8 @@ commitment.
 
 # Divergences from IETF BBS
 
-The BBS core is used unchanged except for the following three points. All three are necessary
-for the layers above; none of them alters the BBS wire format or the results of the vendored
-test vectors.
+The BBS core is used unchanged except for the following three points. All three are necessary for
+the layers above; none alters the BBS wire format or the results of the vendored test vectors.
 
 ## Numeric messages
 
@@ -314,22 +323,23 @@ could not accidentally verify in any case (the hash would have to land in a `~2^
 The composite layer needs to (a) inject a chosen Schnorr blinding into a specific message slot
 before the challenge is computed, and (b) read back the response scalar for that slot after. The
 BBS `ProofGen` of [@!I-D.irtf-cfrg-bbs-signatures] computes its own challenge internally and
-exposes neither. credkit therefore factors `ProofGen` into three phases —
+exposes neither. credkit therefore factors `ProofGen` into three phases:
 
 - `ProofInit`: draw randomness, compute the first-move commitments (`Abar`, `Bbar`, `D`, `T1`,
   `T2`, `domain`), retaining the per-message blindings `m~`;
 - an externally supplied challenge `c`;
-- `ProofFinalize`: fold `c` into responses —
+- `ProofFinalize`: fold `c` into responses.
 
-and correspondingly `ProofVerifyInit` / `ProofVerifyFinalize`. The single-phase
+It correspondingly exposes `ProofVerifyInit` / `ProofVerifyFinalize`. The single-phase
 `ProofGen`/`ProofVerify` are recovered as the compositions that compute the challenge with the
 IETF `ProofChallengeCalculate`, and those compositions still pass the vendored vectors
 byte-for-byte. Only the *challenge source* changes when a proof is used inside a presentation.
 
 ## No COMMIT mode
 
-[@!I-D.irtf-cfrg-bbs-blind-signatures] `-03` added a third per-message disclosure mode, COMMIT,
-that discloses a fresh per-presentation commitment `C_i = Y_0 * s_i + Y_1 * messages[i]` intended
+Version `-03` of [@!I-D.irtf-cfrg-bbs-blind-signatures] added a third per-message disclosure mode,
+COMMIT, that discloses a fresh per-presentation commitment
+`C_i = Y_0 * s_i + Y_1 * messages[i]` intended
 as the hook for external predicates. credkit does not implement it, for two reasons. First, it is
 the least settled part of the draft — no test vectors cover it and its serialization was rewritten
 during `-03`. Second, and more importantly, the composite layer makes it redundant: a
@@ -351,10 +361,10 @@ directly.
 # The merged Fiat-Shamir transcript
 
 Every soundness property in credkit rests on all statements and predicates in a presentation
-sharing one challenge, derived by hashing one transcript. The transcript construction is the
-place where an ad-hoc `H(a || b || c)` concatenation would let a malicious Prover shift octets
-between fields and forge a proof over a different statement that hashes identically — the
-"Frozen Heart" bug class [@FrozenHeart]. The rules below exist to make that impossible.
+sharing one challenge derived by hashing one transcript. An ad-hoc `H(a || b || c)` construction
+could let a malicious Prover shift octets between fields and forge a proof over a different
+statement that hashes identically. This is the "Frozen Heart" bug class [@FrozenHeart]. The rules
+below prevent that ambiguity.
 
 The construction follows the same transcript discipline as [@?I-D.irtf-cfrg-fiat-shamir] —
 labeled prefix-free absorption, initial protocol binding, one squeeze — but derives the
@@ -515,7 +525,7 @@ target of an equality constraint or a predicate: it is unreachable by constructi
 
 A `Presentation` produced by the Prover is:
 
-- `proofs`: one BBS proof per statement, every one carrying the same `challenge`;
+- `proofs`: one BBS proof per statement, each carrying the same `challenge`;
 - `rangeProofs`: one range proof per range predicate, in spec order;
 - `membershipProofs`: one set-membership proof per membership predicate, in spec order;
 - `accumulatorProofs`: one accumulator-membership proof per accumulator predicate, in spec order;
@@ -529,14 +539,14 @@ that spec contain registry state obtained by the Verifier, not accepted from the
 ## Witness equality (the link secret)
 
 An equality constraint names two or more hidden message slots (across any statements) that must
-hold the same value. The Prover draws one fresh Schnorr blinding per equality class and injects
+contain the same value. The Prover draws one fresh Schnorr blinding per equality class and injects
 it into every referenced slot's `m~` before `ProofInit` fixes the first-move commitments. Under
 the one merged challenge, each referenced slot's response is `m^ = m~ + c * m` with a common
 `m~`; the Verifier checks that the response scalars at all referenced slots are equal. Equal
 witnesses under a shared blinding and one challenge yield equal responses; unequal witnesses
 cannot (that would require `c * m_1 = c * m_2` for `m_1 != m_2`).
 
-The Prover additionally checks the witnesses really are equal before proving (it holds them), and
+The Prover additionally checks that the witnesses are equal before proving (it holds them), and
 rejects a slot referenced by more than one class. The Verifier's check is purely on the response
 scalars and reveals nothing about the shared value.
 
@@ -582,9 +592,9 @@ A_j = G1.BASE * (1 / (x + members[j]))    (mod r in the exponent)
 
 and discards `x`. For a **range** predicate the set is the consecutive digit alphabet
 `{0, ..., u-1}` (`base = u`). For a **set-membership** predicate the set is any list of distinct
-scalars, in publication order. This is the entire "trusted setup": a Verifier that signs values
-outside the intended set only enables proofs it alone would accept, i.e. it only fools itself. A
-consumer importing third-party parameters can validate every signature by checking
+scalars in publication order. This is the entire "trusted setup": a Verifier that signs values
+outside the intended set only enables proofs it alone would accept; that is, it fools only itself.
+A consumer importing third-party parameters can validate every signature by checking
 `e(A_j, y + G2.BASE * members[j]) == e(G1.BASE, G2.BASE)`; this catches a malformed alphabet but,
 by design, cannot catch a Verifier that hands out per-prover alphabets as tracking tags (see
 (#per-prover-alphabets)).
@@ -603,7 +613,7 @@ Prover selects the signature `A` on `m`, blinds it as `V = A * v` for a uniforml
 e(V, y) = e(V, G2.BASE)^(-m) * e(G1.BASE, G2.BASE)^(v)
 ~~~
 
-which holds iff `V` is a blinded Boneh-Boyen signature on `m`. Concretely:
+which holds if and only if `V` is a blinded Boneh-Boyen signature on `m`. Concretely:
 
 ~~~
 first move:   R = e( V * (-m~) + G1.BASE * v~ ,  G2.BASE )
@@ -611,16 +621,16 @@ responses:    response         = m~ + c * m
               blindingResponse = v~ + c * v
 ~~~
 
-where `m~` is supplied by the composite layer (see below) and `v~` is fresh. The Verifier
-reconstructs
+where `m~` is supplied by the composite layer
+(#binding-a-predicate-to-a-signature) and `v~` is fresh. The Verifier reconstructs
 
 ~~~
 R = e( V * (-response) + G1.BASE * blindingResponse ,  G2.BASE )
     * e( V * (-c) ,  y )
 ~~~
 
-using one batched pair of pairings, absorbs `V` and `R` into the transcript at the Prover's
-position, and confirms the re-derived challenge matches.
+using one batched pair of pairings, absorbs `V` and `R` into the transcript at the corresponding
+Prover position, and confirms that the re-derived challenge matches.
 
 The step that ties this to the credential is the binding: the composite layer passes the
 referenced BBS message's Schnorr blinding as `m~` directly. Then `response = m~ + c * m` is, by
@@ -628,7 +638,7 @@ construction, the *same* scalar as the BBS proof's response `m^` for that slot �
 membership proof's `m` equals the credential's message and the challenge is shared. The Verifier
 checks `response == m^`. Under `u`-SDH a value outside the signed set would require a
 Boneh-Boyen forgery, so a passing proof establishes "the credential's hidden message is one of
-the signed members" while revealing which member to no one.
+the signed members" without revealing which member it is.
 
 ## Range via digit decomposition
 
@@ -684,7 +694,8 @@ lessOrEqual:     sigma == c * bound - m^        (mod r)
 membership:      response == m^                 (mod r)
 ~~~
 
-These are the checks that make the predicate about the *signed* value rather than about nothing.
+These are the checks that bind the predicate to the *signed* value rather than leaving it unbound
+to the credential.
 The reference implementation's tests include a Prover that runs perfectly valid digit or
 membership proofs over the *wrong* value; every such proof is caught here and only here, which is
 why the predicate package deliberately provides no self-contained "verify" and no internal
@@ -694,17 +705,18 @@ equality against `m^` establishes that `value` is the credential's hidden messag
 
 # Accumulator non-revocation {#accumulator-non-revocation}
 
-credkit models a revocation registry as the current set of **unrevoked** credential ids and proves
-positive membership in that set. It uses the positive VB accumulator [@VB20] over BLS12-381,
-operated additions-static as in the KB construction [@KB21]. A revocation id `y` is a fresh uniform
-scalar assigned by the Issuer and signed into the credential as a hidden numeric message.
+credkit models a revocation registry as the current set of **unrevoked** credential identifiers
+and proves positive membership in that set. It uses the positive VB accumulator [@VB20] over
+BLS12-381, operated with additions held static as in the KB construction [@KB21]. A revocation
+identifier `y` is a fresh uniform scalar assigned by the Issuer and signed into the credential as
+a hidden numeric message.
 
 This design deliberately does not use a bitstring status list: disclosing a stable per-credential
 index would undo BBS verifier unlinkability. It also does not implement the VB universal
 accumulator. Non-membership witnesses are unnecessary for an unrevoked-set registry and create
 the trapdoor-recovery surface analyzed in [@VB-ATTACK].
 
-## Registry setup and additions-static issuance
+## Registry setup and issuance with static additions
 
 The revocation authority samples and retains a nonzero `alpha` and publishes:
 
@@ -714,14 +726,15 @@ params = { Qtilde }
 ~~~
 
 It initializes the accumulator as `V_0 = u_0 * G1.BASE` for a fresh nonzero `u_0`, then discards
-`u_0`. To enroll a credential with hidden revocation id `y`, it issues the membership witness:
+`u_0`. To enroll a credential with hidden revocation identifier `y`, it issues the membership
+witness:
 
 ~~~
 C = (1 / (y + alpha)) * V
 ~~~
 
 The negligible-probability case `y = -alpha` has no inverse and MUST be rejected; the Issuer
-resamples the id.
+resamples the identifier.
 
 The value `V` does not change when credentials are issued. There is no public addition record and
 no other holder updates a witness. This makes joins invisible in the public registry history and
@@ -731,8 +744,8 @@ construction MUST NOT publish or consume addition update data.
 ## Deletion-only epochs and holder updates
 
 To revoke a non-empty batch `D = [y_0, ..., y_{m-1}]`, the authority publishes a sequential epoch
-record containing the new accumulator `V'`, the removed ids, and one `G1` point per coefficient of
-the VB witness-update polynomial:
+record containing the new accumulator `V'`, the removed identifiers, and one `G1` point per
+coefficient of the VB witness-update polynomial:
 
 ~~~
 V' = (1 / product_{y_i in D}(y_i + alpha)) * V
@@ -745,8 +758,8 @@ update = (epoch, V', D, [Omega_0, ..., Omega_{m-1}])
 ~~~
 
 The raw coefficients, which depend on the trapdoor, MUST NOT be published. The Ω points and
-removed ids are identical for every holder and can be distributed as static public data. A holder
-applies one or more strictly increasing updates locally with one combined multiscalar
+removed identifiers are identical for every holder and can be distributed as static public data.
+A holder applies one or more strictly increasing updates locally with one combined multiscalar
 multiplication and one field inversion. The work is linear in the number of removals, matching the
 non-interactive lower bound of [@CH09]. If an update removes the holder's own `y`, then
 `d_D(y) = product_{y_i in D}(y_i - y) = 0`; witness update MUST fail. Otherwise one epoch updates
@@ -805,8 +818,8 @@ before presenting.
 
 # Wire formats
 
-All multi-octet lengths are `I2OSP(_, 8)`. `pointLength = 48` (`G1`), `scalarLength = 32`,
-`G2` length `= 96`.
+All multi-octet lengths are `I2OSP(_, 8)`. `pointLength = 48` (`G1`) and `scalarLength = 32`; a
+`G2` encoding is 96 octets.
 
 ## Range parameters
 
@@ -895,7 +908,7 @@ presentation := I2OSP(N, 8)
      || challenge        # 32 octets
 ~~~
 
-On ingest the challenge is reattached to each BBS-proof body and the fully-validating BBS,
+During parsing, the challenge is reattached to each BBS-proof body and the fully validating BBS,
 range, membership, and accumulator parsers are reused; the recovered challenge is taken from the
 first BBS proof, and verification (#structure) independently re-derives it and compares.
 
@@ -908,7 +921,7 @@ witness-revealing — if composed under more than one challenge. An implementati
 challenge over one transcript for the whole presentation. Composing linked, predicate, or
 non-revocation proofs from independent single-proof invocations is the specific error to avoid.
 
-## `u^L <= 2^64` is a soundness bound, not a limit {#range-ceiling}
+## `u^L <= 2^64` is a soundness bound, not an implementation limit {#range-ceiling}
 
 The one-sided range trick relies on a negative difference `(m - bound) mod r` being a `~2^255`
 scalar that cannot be written as `sum_i u^i * d_i` with each `d_i < u` and `u^L <= 2^64`. That
@@ -956,11 +969,11 @@ additional secret initialization to address the pooled-witness trapdoor-recovery
 [@VB-ATTACK]; credkit has no use for that variant because revocation is removal from an unrevoked
 set.
 
-An implementation also MUST NOT publish accumulator addition updates. The additions-static
-witness formula permits issuance without changing public state, while public VB batch-addition
+An implementation also MUST NOT publish accumulator addition updates. The witness formula for
+static additions permits issuance without changing public state, while public VB batch-addition
 data enables the attack described by [@ALLOSAUR]. Deletion-only Ω data does not provide the same
-forgery path. Binding every membership proof to an issuer-signed hidden id further makes a forged
-witness insufficient by itself.
+forgery path. Binding every membership proof to an issuer-signed hidden identifier further makes
+a forged witness insufficient by itself.
 
 ## Registry freshness is verifier policy
 
@@ -1053,18 +1066,18 @@ that the hidden value is one of the published members, never which. An equality 
 reveals only that the referenced slots are equal, never the shared value. The number and kind of
 predicates, and the parameters used, are of course visible in the spec both parties share.
 
-An accumulator predicate reveals that the credential's hidden revocation id is a member of one
-specific public accumulator value at one epoch. It does not reveal the id or the membership
-witness. The registry public key, accumulator value, and epoch are public and common to all
-holders using that registry state.
+An accumulator predicate reveals that the credential's hidden revocation identifier is a member
+of one specific public accumulator value at one epoch. It does not reveal the identifier or the
+membership witness. The registry public key, accumulator value, and epoch are public and common
+to all holders using that registry state.
 
 ## Revocation update privacy
 
-Issuance produces no public registry event. Each deletion epoch publishes the same removed-id and
-Ω data to every holder, so witness synchronization needs no per-holder query and creates no
-holder-specific correlation channel. The update feed does reveal the random scalars removed in an
-epoch, but those values are never disclosed from credentials and are not meaningful outside the
-registry.
+Issuance produces no public registry event. Each deletion epoch publishes the same removed
+identifiers and Ω data to every holder, so witness synchronization needs no per-holder query and
+creates no holder-specific correlation channel. The update feed does reveal the random scalars
+removed in an epoch, but those values are never disclosed from credentials and are not meaningful
+outside the registry.
 
 A Verifier that accepts multiple epochs learns which accepted state a holder used. A stale epoch
 can therefore fingerprint the holder's synchronization lag. Holders SHOULD update before
@@ -1072,10 +1085,9 @@ presenting, and Verifiers SHOULD keep any acceptance window no wider than operat
 
 # Known limitations and open issues {#known-limitations}
 
-A document that exists so a design can be reviewed honestly has to record what is unproven,
-unhardened, or structurally weak, not only what works. Nothing below is a flaw discovered after
-the fact; each is a known consequence of a choice, listed so a reader can weigh it rather than
-find it.
+An honest design record must describe what remains unproven, unhardened, or structurally weak,
+not only what works. Each limitation below is a known consequence of a design choice, recorded so
+that readers can weigh it directly.
 
 ## The composition has no formal security proof
 
@@ -1088,24 +1100,26 @@ tests, but no reduction has been written down, no machine-checked or peer-review
 exists, and the construction has had no external cryptographic review. AND-composition of sigma
 protocols is standard; this particular assembly — partial-proof response sharing across three
 proof families, one of them pairing-based with `GT` commitments — is bespoke. A concrete
-instance of the gap: the additions-static accumulator operation adopted from [@KB21] carries a
-soundness argument in a non-adaptive model, and credkit's compensations — revocation ids are
-issuer-assigned uniform scalars, never holder-chosen, and a forged witness binds to nothing
-without a BBS signature over the same id — are architectural, not a proof in the stronger
-model. Treat soundness as plausible and tested, not established.
+instance of the gap is the accumulator operation with static additions adopted from [@KB21]. It
+carries a soundness argument in a non-adaptive model. credkit's compensations — revocation
+identifiers are issuer-assigned uniform scalars, never holder-chosen, and a forged witness binds
+to nothing without a BBS signature over the same identifier — are architectural, not a proof in
+the stronger model. Treat soundness as plausible and tested, not established.
 
 ## Holder binding is knowledge of a scalar
 
-Credentials here are not bearer instruments: every presentation is a proof of knowledge of all
-hidden messages, among them the blind-signed link secret — a value the Issuer never saw and no
-transcript contains — so a stolen signature alone presents nothing. But the binding is
-knowledge-based, not device-based. Whoever knows the full witness — signatures, messages, the
-link secret, membership witnesses — has the whole ability to present. Exfiltration of that
-state is therefore complete impersonation, with a blast radius of every credential bound to
-the shared link secret; and nothing cryptographic stops a cooperative Holder from lending it —
-knowledge, unlike a non-extractable hardware key, copies freely, so credential pooling is
-deterred by the all-or-nothing stakes of sharing one's entire credential persona rather than
-prevented by construction.
+Credentials here are not bearer instruments. Every presentation proves knowledge of all hidden
+messages, including the blind-signed link secret — a value the Issuer never saw and no transcript
+contains. A stolen signature alone is therefore insufficient to create a presentation.
+
+The binding is knowledge-based, not device-based. Anyone who obtains the full witness —
+signatures, messages, the link secret, and membership witnesses — has everything needed to
+present. Exfiltrating that state enables complete impersonation across every credential bound to
+the shared link secret.
+
+Nothing cryptographic prevents a cooperative Holder from lending the witness. Knowledge, unlike
+a non-extractable hardware key, can be copied freely. Credential pooling is deterred by the
+all-or-nothing cost of sharing one's entire credential persona, not prevented by the construction.
 
 The absence of a hardware-bound presentation key is a choice with a reason: a device key that
 signed each presentation would be a correlation handle unless its signature were itself proven
@@ -1118,13 +1132,13 @@ secret — but the protocol neither requires nor attests that, and revocation
 ## Adaptive predicate bounds can binary-search a hidden value
 
 A range predicate reveals one bit. A Verifier free to choose bounds adaptively across sessions
-can spend those bits on a binary search: on the order of `log2` of the encoding space many
-presentations recover the hidden value exactly, and a Holder's refusal to answer an unusual
-bound leaks a bit too. The construction cannot prevent this — each individual proof does
-exactly what it claims. The mitigation is policy: bounds SHOULD be fixed, published policy
-constants (a statutory age, a regulatory threshold) common to every Holder, and a Verifier that
-varies bounds per Holder or per session is the range-predicate analog of the per-Prover
-alphabet of (#per-prover-alphabets).
+can spend those bits on a binary search. After roughly `log2(|D|)` presentations, where `D` is the
+value domain, the Verifier can recover the hidden value exactly. A Holder's refusal to answer an
+unusual bound can also leak a bit. The construction cannot prevent this — each individual proof
+does exactly what it claims. The mitigation is policy: bounds SHOULD be fixed, published policy
+constants (a statutory age, a regulatory threshold) common to every Holder. A Verifier that
+varies bounds per Holder or per session is the range-predicate analog of the per-Prover alphabet
+of (#per-prover-alphabets).
 
 ## Presentations are transferable evidence
 
@@ -1144,8 +1158,9 @@ zero-knowledge and therefore indistinguishable from honest ones. A compromised I
 forges credentials, as in any signature scheme. A compromised alphabet scalar `x` — one that
 was not discarded as (#trusted-setup-and-u-sdh) requires — lets a Prover prove any value
 against that alphabet. A compromised registry `alpha` lets anyone compute a valid witness for
-any id, silently disabling revocation for the whole registry (though not authentication: the
-binding of (#accumulator-proofs-require-a-credential-binding) still demands a BBS-signed id).
+any identifier, silently disabling revocation for the whole registry (though not authentication:
+the binding of (#accumulator-proofs-require-a-credential-binding) still demands a BBS-signed
+identifier).
 None of these has a detection mechanism or a recovery story beyond rotation and reissuance.
 Separately, `u`-SDH security degrades as signed sets grow — a Cheon-style loss of up to
 roughly `log2(q)/2` bits for a `q`-element set — negligible for digit alphabets, but a reason
@@ -1162,21 +1177,21 @@ includes one needs a hardened implementation.
 
 ## Post-quantum: soundness fails, privacy is unassessed
 
-All soundness rests on discrete-log-family assumptions in pairing groups (`u`-SDH, CDH, and
-the BBS reductions); a cryptographically relevant quantum computer forges all of it. Hiding is
-on better footing — sigma responses are statistically blinded and the blinded signature values
-are uniform group elements — but no everlasting-privacy analysis of the full composite has
-been done, so the privacy of recorded transcripts against a future quantum adversary should be
-treated as unevaluated rather than guaranteed.
+All soundness rests on discrete-log-family assumptions in pairing groups (`u`-SDH, CDH, and the
+BBS reductions). A cryptographically relevant quantum computer would invalidate every soundness
+guarantee. Hiding is on better footing — sigma responses are statistically blinded and the
+blinded signature values are uniform group elements — but no everlasting-privacy analysis of the
+full composite has been done. The privacy of recorded transcripts against a future quantum
+adversary should therefore be treated as unevaluated rather than guaranteed.
 
 ## Unlinkability ends at the cryptography
 
 The unlinkability of (#privacy-considerations) covers the transcript and nothing around it.
 The combination of disclosed values can identify a Holder outright; an unusual request shape —
-which claims, which predicates, which bounds — fingerprints; network metadata and timing
-correlate visits the proofs never could. At the cryptosuite layer, the structure of the
-disclosed document (quad and blank-node counts) reveals the credential's schema, an
-inheritance from the canonicalization that `bbs-2023` itself notes. And the Issuer's public key
+which claims, which predicates, which bounds — creates a fingerprint. Network metadata and timing
+can correlate visits even though the proofs cannot. At the cryptosuite layer, the structure of the
+disclosed document (quad and blank-node counts) reveals the credential's schema, a property of the
+canonicalization that `bbs-2023` itself notes. The Issuer's public key
 is visible in every presentation, so a Holder's anonymity set is never larger than that
 Issuer's holder population — a credential from a ten-holder registry identifies its holder
 nearly as well as a name would. The epoch-lag channel of (#revocation-update-privacy) is one
@@ -1187,63 +1202,85 @@ everything else is application discipline.
 
 A JSON-LD Data Integrity cryptosuite that packages these presentations as W3C Verifiable
 Credentials [@VC-DATA-MODEL], in the manner of `bbs-2023` [@DI-BBS], is implemented for both the
-single-credential and the multi-credential case. It is summarized here to place the layers above
+single-credential and multi-credential cases. It is summarized here to place the layers above
 in context; its full specification is a separate matter and is not attempted in this document.
 
-- **Kept** from `bbs-2023`: RDF Dataset Canonicalization of the credential, the per-base-proof
-  HMAC label shuffle, the JSON-Pointer split between mandatory and selectively disclosed
-  statements (mandatory statements folded into the BBS header as `proofHash || mandatoryHash`),
-  one BBS message per non-mandatory N-Quad, and a CBOR-then-multibase proof-value envelope.
-- **Replaced**: the proof. Every derived proof is a credkit presentation
-  (#composite-presentations) rather than a single BBS proof — including plain selective
-  disclosure with no predicates, so there is one derivation path and no `bbs-2023`-shaped special
-  case (the uniform-single-statement rule of
-  (#deliberate-non-interoperability-above-the-core), one layer up). The cryptosuite identifier,
-  `@context`, and CBOR envelope prefix bytes are disjoint from `bbs-2023`'s, so a credkit proof
-  value can never parse as a `bbs-2023` one; the suite makes no interoperability claim.
-- **Added — the numeric seam.** A predicate needs the message scalar to *be* the value
-  (#numeric-messages), but a `bbs-2023` message is a hash of an N-Quad string and no arithmetic
-  survives the hash. The issuer therefore appends, after the quad messages, one numeric ("twin")
-  message per entry of a declared list of `(JSON-Pointer, encoderId)` pairs: the value at that
-  pointer, encoded (for example a date as days since 1900) as an integer message
-  (#numeric-messages). The twin block is always hidden by construction and is bound as a third
-  BBS header segment, `bbsHeader = proofHash || mandatoryHash || H(serialize(numericDecl))`, so a
-  Prover cannot lie about a slot's meaning without breaking header reconstruction — the binding is
-  the signature itself, not a new mechanism, and the declaration carries no per-credential
-  correlation handle into the disclosed document. Range, set-membership, equality, and
-  non-revocation claims point at twins, subject to each encoder's allowed uses; equality yields
-  cross-issuer equality over a hidden value when both issuers declared the same predicate-safe
-  encoder.
-- **Added — revocation policy.** The Issuer creates a fresh uniform `Fr` scalar and places its
-  canonical decimal form at a declared `/credentialStatus/revocationId` pointer using the
-  `frScalar` encoder. The twin is signed and always hidden. Unlike predicate-safe values such as
-  dates and unsigned integers, an `frScalar` twin cannot be targeted by range, set-membership, or
-  equality claims: those operations would let a Verifier probe or correlate a permanent id.
-  Conversely, a non-revocation claim MUST target an `frScalar` twin. The source N-Quad for the id
-  is non-disclosable even through a subtree selection such as `/credentialStatus`.
-- **Added — witness and registry sidecars.** A current membership witness enters the Prover's
-  `presentGraph` call but is never serialized. The Verifier's `expectedNonRevocationClaims`
-  supplies registry parameters, accumulator value, and epoch from an independent fetch. The VP
-  envelope carries `[statement, declaration index, params hash, accumulator, epoch]` only as
-  cross-checks for useful synchronization errors; verification uses the Verifier's values in the
-  transcript, never the carried copies.
+## Relationship to `bbs-2023`
+
+The cryptosuite keeps RDF Dataset Canonicalization of the credential, the per-base-proof HMAC
+label shuffle, and the JSON-Pointer split between mandatory and selectively disclosed statements.
+Mandatory statements are folded into the BBS header as `proofHash || mandatoryHash`. It also
+keeps one BBS message per non-mandatory N-Quad and a CBOR-then-multibase proof-value envelope.
+
+The proof itself is replaced. Every derived proof is a credkit presentation
+(#composite-presentations) rather than a single BBS proof. This includes plain selective
+disclosure with no predicates, so there is one derivation path and no `bbs-2023`-shaped special
+case. It applies the uniform-single-statement rule of
+(#deliberate-non-interoperability-above-the-core) one layer up.
+
+The cryptosuite identifier, `@context`, and CBOR envelope prefix bytes are disjoint from those of
+`bbs-2023`. A credkit proof value therefore cannot parse as a `bbs-2023` proof value, and the suite
+makes no interoperability claim.
+
+## Numeric twin messages
+
+A predicate needs the message scalar to *be* the value (#numeric-messages). A `bbs-2023` message,
+however, is a hash of an N-Quad string, so no arithmetic survives the hash. The Issuer therefore
+appends one numeric ("twin") message after the quad messages for each entry in a declared list of
+`(JSON-Pointer, encoderId)` pairs. The value at that pointer is encoded as an integer message; for
+example, a date can be encoded as the number of days since 1900.
+
+The twin block is always hidden by construction. It is bound as a third BBS header segment:
+
+~~~
+bbsHeader = proofHash || mandatoryHash || H(serialize(numericDecl))
+~~~
+
+The signature itself provides the binding, so a Prover cannot misrepresent a slot's meaning
+without breaking header reconstruction. The declaration adds no per-credential correlation
+handle to the disclosed document.
+
+Range, set-membership, equality, and non-revocation claims point at twins, subject to each
+encoder's allowed uses. Equality yields a cross-issuer equality proof over a hidden value when
+both issuers declare the same predicate-safe encoder.
+
+## Revocation policy and sidecars
+
+The Issuer creates a fresh uniform `Fr` scalar and places its canonical decimal form at a declared
+`/credentialStatus/revocationId` pointer using the `frScalar` encoder. The twin is signed and
+always hidden. Unlike predicate-safe values such as dates and unsigned integers, an `frScalar`
+twin cannot be targeted by range, set-membership, or equality claims. Those operations would let
+a Verifier probe or correlate a permanent identifier. Conversely, a non-revocation claim MUST
+target an `frScalar` twin. The source N-Quad for the identifier is non-disclosable even through a
+subtree selection such as `/credentialStatus`.
+
+A current membership witness enters the Prover's `presentGraph` call but is never serialized. The
+Verifier's `expectedNonRevocationClaims` supplies registry parameters, accumulator value, and
+epoch from an independent fetch. The VP envelope carries `[statement, declaration index, params
+hash, accumulator, epoch]` only as cross-checks that enable useful synchronization errors.
+Verification uses the Verifier's values in the transcript, never the carried copies.
+
+## Multi-credential presentations
 
 The multi-credential case — N credentials under one merged challenge inside a Verifiable
 Presentation — is secured by a *second* Data Integrity cryptosuite. Each embedded credential
-carries a *statement descriptor* (its reconstruction data — mode, label map, index sets, N-Quads,
-numeric declaration); the issuer's verification-method identifier is the credential proof's own
-sibling field, never a key. The presentation-level proof carries the merged credkit presentation
-of (#composite-presentations) together with the equality constraints and per-statement claim
-lists, including any non-revocation gates. The `@container: @graph` semantics of the VC v2 context
-mean the presentation body is a carrier the presentation proof need not hash over — each
-credential is already bound by its own
-BBS signature and absorbed into the merged transcript — so reordering or substituting credentials
-that differ in disclosed content breaks the challenge without an envelope-level integrity check.
-One ciphersuite is pinned across the whole presentation (the link-secret witness is
-suite-dependent), and a holder identifier is unrepresentable by construction. The design record
-and its rationale are FINDINGS §14–§19 in the repository; this document specifies the presentation,
-predicate, and accumulator layer those build on, not the full cryptosuite envelope or an
-application's registry-discovery vocabulary.
+carries a *statement descriptor*: its reconstruction mode, label map, index sets, N-Quads, and
+numeric declaration. The Issuer's `verificationMethod` is carried as an identifier in the sibling
+field of the credential's proof, never as a key.
+
+The presentation-level proof carries the merged credkit presentation of
+(#composite-presentations), together with the equality constraints and per-statement claim lists,
+including any non-revocation gates. Under the `@container: @graph` semantics of the VC v2 context,
+the presentation body is only a carrier and need not be hashed by the presentation proof. Each
+credential is already bound by its own BBS signature and absorbed into the merged transcript.
+Reordering or substituting credentials that differ in disclosed content therefore breaks the
+challenge without an envelope-level integrity check.
+
+One ciphersuite is pinned across the whole presentation because the link-secret witness is
+suite-dependent. A holder identifier is unrepresentable by construction. The repository design
+record and its rationale are in `FINDINGS.md` §§14–19. Those sections describe the cryptosuite
+envelope and application vocabulary; this document specifies the presentation, predicate, and
+accumulator layers on which they rely.
 
 # IANA considerations
 
