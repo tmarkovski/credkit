@@ -80,6 +80,14 @@ The standards boundary is intentional:
 - The JSON-LD layer borrows the document-processing shape of `bbs-2023`, but uses distinct
   cryptosuite identifiers and proof envelopes. A credkit proof is deliberately not a
   `bbs-2023` proof.
+- The architecture — BBS credentials over a blind-signed link secret, hidden-message equality,
+  predicates, accumulator revocation, one merged challenge — is shared with
+  [AnonCreds v2](https://github.com/anoncreds/anoncreds-v2-rs), which served as credkit's
+  architecture reference. The two share no bytes at any layer: credkit sits on the IETF BBS
+  wire format, fills the predicate and accumulator-proof slots differently, and packages
+  results as JSON-LD credentials. The
+  [draft specification](https://tmarkovski.github.io/credkit/#relationship-to-anoncreds-v2)
+  records the full comparison.
 
 The draft is a reviewable description of the construction, not a standards-track proposal. It
 covers the composite presentation and predicate layers and summarizes the JSON-LD integration.

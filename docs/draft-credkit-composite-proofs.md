@@ -159,6 +159,39 @@ This document is not, however, an instantiation of either draft, for three reaso
 Should those drafts mature to cover BLS12-381 and statement composition, re-aligning this layer's
 transcript with them would be a natural future revision.
 
+## Relationship to AnonCreds v2 {#relationship-to-anoncreds-v2}
+
+The construction this document describes is architecturally the same as AnonCreds v2, whose Rust
+implementation [@?ANONCREDS-V2] served as the architecture reference for the composite layer. The
+feature sets coincide almost exactly: multi-message BBS credentials, blind issuance over a
+holder-chosen link secret, selective disclosure, equality of hidden messages across credentials,
+predicates over hidden signed values, accumulator-based revocation, and the composition of all of
+these statements into one presentation. Two of its design decisions are adopted here directly: the
+Pedersen indirection that decouples a predicate backend from the signature proof (see
+(#binding-a-predicate-to-a-signature)), and the integer message encoding that makes predicates
+over signed values possible at all (see (#numeric-messages)).
+
+The two systems nonetheless share no bytes at any layer (all observations are as of crate
+`credx` 0.2.1):
+
+| Layer | AnonCreds v2 | credkit |
+|---|---|---|
+| BBS core | A vendored pre-IETF BBS from the academic short-group-signature lineage: its own generator derivation, Merlin transcript labels, no ciphersuite identifiers | [@!I-D.irtf-cfrg-bbs-signatures] unchanged, verified byte-for-byte against its test vectors |
+| Blind issuance | Classic BBS+ blind signing — a G1 commitment with a Schnorr proof, predating the IETF draft | The `Commit`/`BlindSign` flow of [@!I-D.irtf-cfrg-bbs-blind-signatures] |
+| Predicates | Bulletproofs range proofs over 64-bit ranges | CCS signed-set membership and digit decomposition [@CCS08] (see (#predicates-over-hidden-messages)) |
+| Non-revocation | The same positive VB accumulator [@VB20], proven with the paper's own membership protocol (additional generators, prover GT arithmetic) | The same accumulator, proven with the CDH weak-BB protocol (see (#cdh-membership-proof-and-bbs-binding)) |
+| Transcript | Merlin | The labeled transcript of (#the-merged-fiat-shamir-transcript), kept in the BBS `hash_to_scalar` family |
+| Envelope | A bespoke presentation format | W3C Verifiable Credentials and Presentations secured by Data Integrity proofs (see (#the-cryptosuite-layer)) |
+
+Every intermediate value consequently diverges — generators, domain separation, challenges, wire
+encodings — so neither implementation can serve as a test oracle for the other, and no
+interoperability between them is possible or intended. Cross-checking is structural only: the same
+statement composition, the same equality mechanic, the same protocol shapes. The comparison also
+runs the other way: AnonCreds v2 provides verifiable encryption of hidden messages toward a
+designated third party, which credkit does not implement. The relationship is fairly summarized
+as: the AnonCreds v2 architecture, re-derived over the IETF BBS wire format and packaged as
+JSON-LD credentials, with the predicate and accumulator-proof slots filled differently.
+
 ## Terminology
 
 Holder, Issuer, Verifier, Prover, and the BBS operation names (`Sign`, `Commit`, `BlindSign`,
@@ -310,8 +343,8 @@ messageToScalar(suite, message):
      return hash_to_scalar(message, api_id || "MAP_MSG_TO_SCALAR_AS_HASH_")
 ```
 
-This is the same technique AnonCreds uses for its attribute encoding, and it is the only change
-to the signing path. Bytes messages are unaffected and continue to reproduce the BBS vectors.
+This is the same technique AnonCreds uses for its attribute encoding (see
+(#relationship-to-anoncreds-v2)), and it is the only change to the signing path. Bytes messages are unaffected and continue to reproduce the BBS vectors.
 The consequences for predicate semantics — that predicates are modular, and that honest values
 must be encoded well below `r` for the natural comparison to hold — are discussed in
 (#modular-predicate-semantics). A predicate MUST reference a message that was signed as an
@@ -1374,6 +1407,14 @@ This document has no IANA actions. It defines no new registries and requests no 
     <title>Verifiable Credentials Data Model v2.0</title>
     <author><organization>W3C</organization></author>
     <date year="2025"/>
+  </front>
+</reference>
+
+<reference anchor="ANONCREDS-V2" target="https://github.com/anoncreds/anoncreds-v2-rs">
+  <front>
+    <title>AnonCreds v2 Rust implementation (crate credx)</title>
+    <author><organization>AnonCreds Project</organization></author>
+    <date year="2026"/>
   </front>
 </reference>
 
