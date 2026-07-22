@@ -78,8 +78,8 @@ The standards boundary is intentional:
   [draft specification](docs/draft-credkit-composite-proofs.md), but currently have no independent
   implementation or external test vectors.
 - The JSON-LD layer borrows the document-processing shape of `bbs-2023`, but uses distinct
-  cryptosuite identifiers and proof envelopes. A credkit proof is deliberately not a
-  `bbs-2023` proof.
+  cryptosuite identifiers (`credkit-bbs-sha-2026`, `credkit-bbs-shake-2026`) and proof
+  envelopes. A credkit proof is deliberately not a `bbs-2023` proof.
 - The architecture — BBS credentials over a blind-signed link secret, hidden-message equality,
   predicates, accumulator revocation, one merged challenge — is shared with
   [AnonCreds v2](https://github.com/anoncreds/anoncreds-v2-rs), which served as credkit's
@@ -145,8 +145,12 @@ pnpm docs:render
 
 [![See credkit in action: blind issuance, selective disclosure, and private age proofs.](docs/verygoodwallet-demo-banner.webp)](https://verygoodwallet.com)
 
-[Very Good Wallet](https://verygoodwallet.com) is a demonstration wallet built on this
-repository, showing how the constructions in the spec are used in a working credential flow.
+[VeryGoodWallet](https://verygoodwallet.com) is a demonstration built on this repository: a
+passkey-native wallet, an issuer, and two verifiers showing how the constructions in the spec
+are used in a working credential flow. The demo's source is in the
+[verygoodwallet repository](https://github.com/tmarkovski/verygoodwallet), and its
+[technical writeup](https://verygoodwallet.com/writeup/) walks through the privacy properties,
+protocols, and browser-native infrastructure for readers without a cryptography background.
 
 ## License
 
